@@ -1,1 +1,8 @@
 !.gitignore
+output/
+output_audio/
+movies/
+images/
+FFMPEG/
+clips/
+backgroundmusic/
