@@ -36,6 +36,22 @@ MAX_TOTAL_DURATION = 3.5 * 60
 
 open_api_key = "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"
 
+def delete_files(starting_directory, file_name):
+    for root, dirs, files in os.walk(starting_directory):
+        for file in files:
+            if file == file_name:
+                file_path = os.path.join(root, file)
+                os.remove(file_path)
+                print(f"Deleted file: {file_path}")
+
+# Usage example
+main_directory = ""
+file_name = "delete_this_file.mp4"
+
+delete_files(main_directory, file_name)
+
+
+
 class Gui:
     def __init__(self, root):
         self.root = root
