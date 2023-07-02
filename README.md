@@ -1,4 +1,4 @@
 # AI-Movie-Shorts
-Turn Full Movies into AI-Generated Movie Trailers/Summaries Using ChatGPT
+Turn Full Movies into AI-Generated Movie Trailers/Summaries Using AI.
 
 IGNORE ALL FILES AND DIRECTORIES EXCEPT: "output", "movies", and "main.py"
