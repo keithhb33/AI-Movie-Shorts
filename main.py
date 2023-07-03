@@ -357,7 +357,8 @@ class Gui:
         self.stop_button.destroy()
         self.start_button.config(state=tk.NORMAL)
         self.start_button.destroy()
-        self.upload_button.config(state=tk.NORMAL)
+        if open_api_key != "OPEN_AI_API_KEY HERE":
+            self.upload_button.config(state=tk.NORMAL)
         Gui.rename_files("output", "")
         Gui.rename_again("output", "")
         #Gui.remove_processed_movies()
@@ -502,7 +503,8 @@ class Gui:
 
             
         # Make upload button active again
-        self.upload_button.config(state=tk.NORMAL)
+        if open_api_key != "OPEN_AI_API_KEY HERE":
+            self.upload_button.config(state=tk.NORMAL)
         self.uploading_label.config(text="Uploading...")
         
     def upload_to_youtube(self):
