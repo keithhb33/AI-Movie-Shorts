@@ -26,4 +26,4 @@ open_api_key = "OPEN_AI_API_KEY HERE"
 ```
 
 <h3>YouTube API Setup & Configuration</h3>
-Users must configure the YouTube API to access their particular YouTube channel. This configuration is optional if users only wish to generate .MP4s.
+Users must configure the YouTube API to access their particular YouTube channel. This configuration is optional if users only wish to generate MP4 files.
