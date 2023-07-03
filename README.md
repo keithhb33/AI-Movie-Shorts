@@ -1,7 +1,7 @@
 # AI-Movie-Shorts
 Turn Full Movies or .MP4 Files into AI-Generated Movie Trailers/Summaries Using AI.
 
-<h3>Basic Installation Steps:</h3>
+<h3>Basic Installation Steps</h3>
 
 ```python
 #Clone the Git repository:
@@ -28,3 +28,9 @@ open_api_key = "OPEN_AI_API_KEY HERE"
 <h3>YouTube API Setup & Configuration</h3>
 
 Users must configure the YouTube API to access their particular YouTube channel. This configuration is optional if users only wish to generate MP4 files.
+
+
+<h3>Usage</h3>
+
+Place .MP4 files into the "movies" directory. <br />
+Ensure all filenames are the titles of their respective movies (Ex: "Pulp Fiction.mp4")
