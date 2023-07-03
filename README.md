@@ -20,8 +20,10 @@ Key acquisition guide <a href="https://www.howtogeek.com/885918/how-to-get-an-op
 Once acquired, edit line 37 in "main.py":
 <br />
 
-
 ```python
 #Replace string with your API key
 open_api_key = "OPEN_AI_API_KEY HERE"
 ```
+
+<h3>YouTube API Setup & Configuration</h3>
+Users must configure the YouTube API to access their particular YouTube channel. This configuration is optional if only generation of .MP4s are needed.
