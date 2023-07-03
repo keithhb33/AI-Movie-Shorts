@@ -48,6 +48,9 @@ class Gui:
         root.geometry("500x700")
         root.iconbitmap("images/icon.ico")
         self.progress_label = None
+        if open_api_key == "OPEN_AI_API_KEY HERE":
+            
+            self.upload_button.config(state=tk.DISABLED)
         
         self.uploaded_movies = 0
         
@@ -552,10 +555,8 @@ def delete_files(starting_directory, file_name):
                 os.remove(file_path)
                 print(f"Deleted file: {file_path}")
 
-# Usage example
 main_directory = ""
 file_name = ".placeholder"
-
 delete_files(main_directory, file_name)
     
     
