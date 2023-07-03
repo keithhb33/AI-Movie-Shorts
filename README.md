@@ -1,4 +1,6 @@
 # AI-Movie-Shorts
-Turn Full Movies into AI-Generated Movie Trailers/Summaries Using AI. EXTREME WIP
+Turn Full Movies or .MP4 Files into AI-Generated Movie Trailers/Summaries Using AI.
 
-IGNORE ALL FILES AND DIRECTORIES EXCEPT: "output", "movies", and "main.py"
+<h1>Installation Steps:</h1>
+
+
