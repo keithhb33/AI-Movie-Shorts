@@ -7,7 +7,7 @@ Turn Full Movies or .MP4 Files into AI-Generated Movie Trailers/Summaries Using 
 #Clone the Git repository:
 git clone https://github.com/keithhb33/AI-Movie-Shorts.git
 
-#Install modules and dependencies within cloned directory:
+#Install modules and dependencies within the cloned directory:
 python3 -m pip install -r requirements.txt
 ```
 
@@ -18,6 +18,7 @@ Key acquisition guide <a href="https://www.howtogeek.com/885918/how-to-get-an-op
 <br />
 <br />
 Once acquired, edit line 37 in "main.py":
+
 ```python
 #Replace string with your API key
 open_api_key = "OPEN_AI_API_KEY HERE"
