@@ -12,6 +12,6 @@ python3 -m pip install -r requirements.txt
 ```
 
 <h3>OpenAI API Setup & Configuration</h3>
-Due to Open API's usage rate costs, users must configure their own GPT 3.5 API Key.
+Due to OpenAI's API usage rate costs, users must configure their own GPT 3.5 API Key.
 <br />
 Key acquisition guide <a href="https://www.howtogeek.com/885918/how-to-get-an-openai-api-key/#:~:text=Go%20to%20OpenAI's%20Platform%20website,generate%20a%20new%20API%20key">here.</a>
