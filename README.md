@@ -15,3 +15,10 @@ python3 -m pip install -r requirements.txt
 Due to OpenAI's API usage rate costs, users must configure their own GPT 3.5 API Key.
 <br />
 Key acquisition guide <a href="https://www.howtogeek.com/885918/how-to-get-an-openai-api-key/#:~:text=Go%20to%20OpenAI's%20Platform%20website,generate%20a%20new%20API%20key">here.</a>
+<br />
+<br />
+Once acquired, edit line 37 in "main.py":
+```python
+#Replace string with your API key
+open_api_key = "OPEN_AI_API_KEY HERE"
+```
