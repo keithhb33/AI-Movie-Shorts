@@ -104,7 +104,6 @@ python-dateutil==2.8.2
 python-pptx==0.6.21
 pyttsx3==2.90
 pytz==2022.1
-pywin32==304
 pywin32-ctypes==0.2.0
 PyYAML==5.3.1
 readme-renderer==36.0
