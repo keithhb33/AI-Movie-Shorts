@@ -18,6 +18,8 @@ Key acquisition guide <a href="https://www.howtogeek.com/885918/how-to-get-an-op
 <br />
 <br />
 Once acquired, edit line 37 in "main.py":
+<br />
+
 
 ```python
 #Replace string with your API key
