@@ -1,7 +1,7 @@
 # AI-Movie-Shorts
 Turn Full Movies or .MP4 Files into AI-Generated Movie Trailers/Summaries Using AI.
 
-https://github.com/keithhb33/AI-Movie-Shorts/assets/51885619/dc5a70ad-7a20-481d-97ce-639b0060d818
+<iframe width="560" height="315" src="https://www.youtube.com/embed/_alNjfuDs-I" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
 
 <h3>Basic Installation Steps</h3>
 
