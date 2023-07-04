@@ -2,7 +2,7 @@
 Turn Full Movies or .MP4 Files into AI-Generated Movie Trailers/Summaries Using AI.
 
 #Movie Example:
-<img src=https://www.imdb.com/title/tt0144084/></img>
+![American Psycho Movie Cover]([http://url/to/img.png](https://www.imdb.com/title/tt0144084/))
 
 
 #Video has been heavily compressed to be viewable in README.md
