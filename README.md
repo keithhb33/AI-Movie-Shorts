@@ -12,6 +12,11 @@ cd AI-Movie-Shorts
 
 #Install modules and dependencies within the cloned directory:
 python3 -m pip install -r requirements.txt
+
+#Remove .placeholder files (Windows PowerShell CMD):
+Get-ChildItem -Recurse -Filter ".placeholder" | Remove-Item
+
+
 ```
 
 <h3>OpenAI API Setup & Configuration</h3>
