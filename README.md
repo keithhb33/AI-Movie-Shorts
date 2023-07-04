@@ -1,5 +1,5 @@
 # AI-Movie-Shorts
-Turn Full Movies or .MP4 Files into AI-Generated Movie Trailers and Summaries using OpenAI. This Repository Experiments with and Contributes to the Growth and Emergence of AI-Generated Content Consumption.
+Turn full movies or .MP4 Files into AI-generated movie trailers and summaries using OpenAI. This repository experiments with and contributes to the growth and emergence of AI-generated content consumption.
 
 Example:
 
