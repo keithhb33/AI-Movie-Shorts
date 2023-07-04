@@ -45,7 +45,7 @@ open_api_key = "OPEN_AI_API_KEY HERE"
 
 Users must configure the YouTube API to access their particular YouTube channel. This configuration is optional if users only wish to generate MP4 files.
 
-Follow the steps <a href="https://developers.google.com/youtube/v3/guides/uploading_a_video">here</a> only under the "Requirements" heading. Configure your YouTube API <a href="https://console.cloud.google.com/apis/dashboard">here</a>. Once the YouTube Data API web-application has been configured, paste the correct "client_id" and "client_secret" into the 
+Follow the steps <a href="https://developers.google.com/youtube/v3/guides/uploading_a_video">here</a> only under the "Requirements" heading. Configure your YouTube API <a href="https://console.cloud.google.com/apis/dashboard">here</a>. Once the YouTube Data API web application has been configured, paste the correct "client_id" and "client_secret" into the 
 existing client_secrets.json or replace the file.
 
 After clicking "Upload All to Youtube" on the GUI, users should be asked to sign in to the Google account associated with their YouTube channel, and all of the outputted .MP4 files in the "output" directory will upload to YouTube.
@@ -68,6 +68,6 @@ Ensure all filenames are the titles of their respective movies (Ex: "American Ps
 
 Click "Start Generation"
 
-After all of the narrations are complete, the GUI will indicate such. Processed trailers can be viewed in the "output" directory
+After all narrations are complete, the GUI will indicate such. Processed trailers can be viewed in the "output" directory
 
 
