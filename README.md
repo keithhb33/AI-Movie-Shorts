@@ -66,6 +66,7 @@ An application GUI should appear
 Place .MP4 (movie) files into the "movies" directory. <br />
 Ensure all filenames are the titles of their respective movies (Ex: "American Psycho.mp4")
 Click "Start Generation"
+
 After all of the narrations are complete, the GUI will indicate such. Processed trailers can be viewed in the "output" directory
 
 
