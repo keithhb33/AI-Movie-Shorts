@@ -71,6 +71,8 @@ Click "Start Generation"
 
 After all narrations are complete, the GUI will indicate such. Processed trailers can be viewed in the "output" directory.
 
-If properly configured, all of the .MP4 files in the directory "output" will be uploaded to YouTube, each upload sharing the name of the original file placed in "movies" along with a preloaded description. Changes to the preloaded description and titles can be configured in the upload_action.py under the upload_to_youtube method.
+If properly configured, all of the .MP4 files in the directory "output" will be uploaded to YouTube, each upload sharing the name of the original file placed in "movies" along with a preloaded description.
+
+*Changes to the preloaded description and titles can be configured in the upload_action.py under the upload_to_youtube method.
 
 
