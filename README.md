@@ -4,14 +4,9 @@ Turn Full Movies or .MP4 Files into AI-Generated Movie Trailers/Summaries Using 
 Example:
 
 ![American Psycho Movie Cover](https://cdn.shopify.com/s/files/1/0057/3728/3618/products/f85ee5ef68c6266f73cf11f6c599cffd_9c1132bb-9c5f-41c8-bd6f-f35db9a6a1a6_480x.progressive.jpg?v=1573653978)
-
 [![American Psycho Short](http://img.youtube.com/vi/_alNjfuDs-I/0.jpg)](http://www.youtube.com/watch?v=_alNjfuDs-I)
 
 
-<p float="left">
-  <img src="https://cdn.shopify.com/s/files/1/0057/3728/3618/products/f85ee5ef68c6266f73cf11f6c599cffd_9c1132bb-9c5f-41c8-bd6f-f35db9a6a1a6_480x.progressive.jpg?v=1573653978" width="30%" />
-  <img src="http://img.youtube.com/vi/_alNjfuDs-I/0.jpg" width="70%" />
-</p>
 
 
 
