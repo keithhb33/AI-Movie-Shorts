@@ -3,13 +3,10 @@ Turn Full Movies or .MP4 Files into AI-Generated Movie Trailers/Summaries Using 
 
 Example:
 
-<p align="center">
-  <img src="https://cdn.shopify.com/s/files/1/0057/3728/3618/products/f85ee5ef68c6266f73cf11f6c599cffd_9c1132bb-9c5f-41c8-bd6f-f35db9a6a1a6_480x.progressive.jpg?v=1573653978" alt="American Psycho Movie Cover" width="400" />
-  <video width="320" height="240" controls>
-    <source src="https://github.com/keithhb33/AI-Movie-Shorts/assets/51885619/48a3eb14-d288-401d-899e-04603ede1de9.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-</p>
+[American Psycho Movie Cover](https://cdn.shopify.com/s/files/1/0057/3728/3618/products/f85ee5ef68c6266f73cf11f6c599cffd_9c1132bb-9c5f-41c8-bd6f-f35db9a6a1a6_480x.progressive.jpg?v=1573653978)
+
+https://github.com/keithhb33/AI-Movie-Shorts/assets/51885619/974a7e35-866a-40d5-b9f4-35bbd3b7714f
+
 
 
 
