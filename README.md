@@ -55,6 +55,17 @@ Unfortunately, as of 2020 July, only audited and approved user-created YouTube A
 
 
 <h3>Usage</h3>
+After configuration:
 
-Place .MP4 files into the "movies" directory. <br />
+```python
+#Run the terminal command in the "AI-Movie-Shorts" directory:
+python3 main.py
+```
+
+An application GUI should appear
+Place .MP4 (movie) files into the "movies" directory. <br />
 Ensure all filenames are the titles of their respective movies (Ex: "American Psycho.mp4")
+Click "Start Generation"
+After all of the narrations are complete, the GUI will indicate such. Processed trailers can be viewed in the "output" directory
+
+
