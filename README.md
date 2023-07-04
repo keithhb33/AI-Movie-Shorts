@@ -45,6 +45,11 @@ open_api_key = "OPEN_AI_API_KEY HERE"
 
 Users must configure the YouTube API to access their particular YouTube channel. This configuration is optional if users only wish to generate MP4 files.
 
+Follow the steps <a href="https://developers.google.com/youtube/v3/guides/uploading_a_video">here</a> under the "Requirements" heading. Configure your YouTube API starting <a href="https://console.cloud.google.com/apis/dashboard">here</a>.
+
+Set up your Google Cloud API with the YouTube Data API installed. 
+
+
 
 <h3>Usage</h3>
 
