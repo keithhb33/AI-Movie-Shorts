@@ -49,8 +49,9 @@ class Gui:
         root.iconbitmap("images/icon.ico")
         self.progress_label = None
         if open_api_key == "OPEN_AI_API_KEY HERE":
-            
             self.upload_button.config(state=tk.DISABLED)
+        if open_api_key == "OPEN_AI_API_KEY HERE":
+            self.start_button.config(state=tk.DISABLED)
         
         self.uploaded_movies = 0
         
@@ -358,7 +359,8 @@ class Gui:
         self.processing_label.config(text="Process Complete")
         self.stop_uploading_button.destroy()
         self.stop_button.destroy()
-        self.start_button.config(state=tk.NORMAL)
+        if open_api_key != "OPEN_AI_API_KEY HERE":
+            self.start_button.config(state=tk.NORMAL)
         self.start_button.destroy()
         if open_api_key != "OPEN_AI_API_KEY HERE":
             self.upload_button.config(state=tk.NORMAL)
