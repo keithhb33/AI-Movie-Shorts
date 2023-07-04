@@ -5,7 +5,7 @@ Example:
 
 ![American Psycho Movie Cover](https://cdn.shopify.com/s/files/1/0057/3728/3618/products/f85ee5ef68c6266f73cf11f6c599cffd_9c1132bb-9c5f-41c8-bd6f-f35db9a6a1a6_480x.progressive.jpg?v=1573653978)
 
-https://github.com/keithhb33/AI-Movie-Shorts/assets/51885619/48a3eb14-d288-401d-899e-04603ede1de9
+https://github.com/keithhb33/AI-Movie-Shorts/assets/51885619/48a3eb14-d288-401d-899e-04603ede1de9.mp4
 
 
 
