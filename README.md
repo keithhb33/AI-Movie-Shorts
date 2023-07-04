@@ -49,4 +49,4 @@ Users must configure the YouTube API to access their particular YouTube channel.
 <h3>Usage</h3>
 
 Place .MP4 files into the "movies" directory. <br />
-Ensure all filenames are the titles of their respective movies (Ex: "Pulp Fiction.mp4")
+Ensure all filenames are the titles of their respective movies (Ex: "American Psycho.mp4")
