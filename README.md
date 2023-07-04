@@ -65,7 +65,6 @@ python3 main.py
 An application GUI should appear.
 
 Place .MP4 (movie) files into the "movies" directory.
-
 Ensure all filenames are the titles of their respective movies (Ex: "American Psycho.mp4")
 
 Click "Start Generation"
