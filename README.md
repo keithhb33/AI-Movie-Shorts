@@ -1,5 +1,5 @@
 # AI-Movie-Shorts
-Turn Full Movies or .MP4 Files into AI-Generated Movie Trailers/Summaries Using AI.
+Turn Full Movies or .MP4 Files into AI-Generated Movie Trailers and Summaries using OpenAI.
 
 Example:
 
