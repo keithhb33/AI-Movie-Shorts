@@ -18,7 +18,7 @@ git clone https://github.com/keithhb33/AI-Movie-Shorts.git
 #Navigate to the cloned repo:
 cd AI-Movie-Shorts
 
-#Install modules and dependencies within the cloned directory:
+#Install modules and dependencies within the cloned "AI-Movie-Shorts" directory:
 python3 -m pip install -r requirements.txt
 
 #Remove .placeholder files (Windows PowerShell Terminal Command):
