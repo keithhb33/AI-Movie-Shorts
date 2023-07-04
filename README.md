@@ -62,7 +62,7 @@ After configuration:
 python3 main.py
 ```
 
-An application GUI should appear
+An application GUI should appear.
 Place .MP4 (movie) files into the "movies" directory. <br />
 Ensure all filenames are the titles of their respective movies (Ex: "American Psycho.mp4")
 
