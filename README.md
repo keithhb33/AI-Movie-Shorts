@@ -48,7 +48,9 @@ Users must configure the YouTube API to access their particular YouTube channel.
 Follow the steps <a href="https://developers.google.com/youtube/v3/guides/uploading_a_video">here</a> only under the "Requirements" heading. Configure your YouTube API <a href="https://console.cloud.google.com/apis/dashboard">here</a>. Once the YouTube Data API has been configured, paste the correct "client_id" and "client_secret" into the 
 existing client_secrets.json or simply replace the file.
 
-Set up your Google Cloud API with the YouTube Data API installed. 
+After clicking "Upload All to Youtube" on the GUI, users should be asked to sign in to their Google account associated with their YouTube account.
+
+Unfortunately, as of 2020 July, only audited and approved user-created YouTube APIs can be used to upload public videos to the platform. The audit application can be found here, and the process usually only takes a few days.
 
 
 
