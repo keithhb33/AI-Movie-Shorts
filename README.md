@@ -9,7 +9,7 @@ Example:
     <td width="50%">
       <img src="https://cdn.shopify.com/s/files/1/0057/3728/3618/products/f85ee5ef68c6266f73cf11f6c599cffd_9c1132bb-9c5f-41c8-bd6f-f35db9a6a1a6_480x.progressive.jpg?v=1573653978" alt="American Psycho Movie Cover" width="100%" />
     </td>
-    <td width="50%">
+    <td width="100%">
       <video controls width="100%" height="auto">
         <source src="https://github.com/keithhb33/AI-Movie-Shorts/assets/51885619/c1971560-79d5-4037-bd8b-40e0fa8521dc" type="video/mp4">
         Your browser does not support the video tag.
