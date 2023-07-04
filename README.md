@@ -45,8 +45,8 @@ open_api_key = "OPEN_AI_API_KEY HERE"
 
 Users must configure the YouTube API to access their particular YouTube channel. This configuration is optional if users only wish to generate MP4 files.
 
-Follow the steps <a href="https://developers.google.com/youtube/v3/guides/uploading_a_video">here</a> only under the "Requirements" heading. Configure your YouTube API <a href="https://console.cloud.google.com/apis/dashboard">here</a>. Once the YouTube Data API has been configured, paste the correct "client_id" and "client_secret" into the 
-existing client_secrets.json or simply replace the file.
+Follow the steps <a href="https://developers.google.com/youtube/v3/guides/uploading_a_video">here</a> only under the "Requirements" heading. Configure your YouTube API <a href="https://console.cloud.google.com/apis/dashboard">here</a>. Once the YouTube Data API web-application has been configured, paste the correct "client_id" and "client_secret" into the 
+existing client_secrets.json or replace the file.
 
 After clicking "Upload All to Youtube" on the GUI, users should be asked to sign in to their Google account associated with their YouTube account.
 
