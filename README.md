@@ -1,9 +1,11 @@
 # AI-Movie-Shorts
 Turn Full Movies or .MP4 Files into AI-Generated Movie Trailers/Summaries Using AI.
 
+#Movie Example:
+<img src=https://www.imdb.com/title/tt0144084/></img>
+
 
 #Video has been heavily compressed to be viewable in README.md
-
 
 https://github.com/keithhb33/AI-Movie-Shorts/assets/51885619/c1971560-79d5-4037-bd8b-40e0fa8521dc
 
