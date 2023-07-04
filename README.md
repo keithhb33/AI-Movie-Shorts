@@ -48,7 +48,7 @@ Users must configure the YouTube API to access their particular YouTube channel.
 Follow the steps <a href="https://developers.google.com/youtube/v3/guides/uploading_a_video">here</a> only under the "Requirements" heading. Configure your YouTube API <a href="https://console.cloud.google.com/apis/dashboard">here</a>. Once the YouTube Data API web-application has been configured, paste the correct "client_id" and "client_secret" into the 
 existing client_secrets.json or replace the file.
 
-After clicking "Upload All to Youtube" on the GUI, users should be asked to sign in to their Google account associated with their YouTube account.
+After clicking "Upload All to Youtube" on the GUI, users should be asked to sign in to their Google account associated with their YouTube account, and all of the outputted .MP4 files in the "output" directory will upload to YouTube.
 
 Unfortunately, as of 2020 July, only audited and approved user-created YouTube APIs can be used to upload public videos to the platform. Using non-audited APIs to upload videos to YouTube results in the videos being locked as private. The audit application can be found <a href="https://support.google.com/youtube/contact/yt_api_form?hl=en">here</a>. The process usually only takes a few days.
 
