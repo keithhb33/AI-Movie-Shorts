@@ -64,6 +64,8 @@ python3 main.py
 
 An application GUI should appear.
 
+![GUI_image](https://github.com/keithhb33/AI-Movie-Shorts/assets/51885619/0c136488-f3d7-4b94-a49e-32af9a861ef8)
+
 Place .MP4 (movie) files into the "movies" directory.
 Ensure all filenames are the titles of their respective movies (Ex: "American Psycho.mp4")
 
