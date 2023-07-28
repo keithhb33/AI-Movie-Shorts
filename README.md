@@ -79,7 +79,7 @@ After all narrations are complete, the GUI will indicate such. Processed trailer
 If properly configured, all of the .MP4 files in the directory "output" will be uploaded to YouTube, each upload sharing the name of the original file placed in "movies" along with a preloaded description.
 
 ```python
-# Changes to the preloaded title and description can be configured in "upload_action.py" under the "upload_to_youtube" method.
+#Changes to the preloaded title and description can be configured in "upload_action.py" under the "upload_to_youtube" method.
 ```
 
 *I am working on implementing an improvement in the AI's knowledge of movies and TV shows, allowing for an increase in accurately generated scripts. This project will continue to be updated. 
