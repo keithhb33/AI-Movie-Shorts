@@ -82,6 +82,6 @@ If properly configured, all of the .MP4 files in the directory "output" will be 
 #Changes to the preloaded title and description can be configured in "upload_action.py" under the "upload_to_youtube" method.
 ```
 
-*I am working on implementing an improvement in the AI's knowledge of movies and TV shows, allowing for an increase in accurately generated scripts. This project will continue to be updated. 
+*I am working on implementing an improvement in the AI's knowledge of movies and TV shows, allowing for an increase in the number of accurately generated scripts. This project will continue to be updated. 
 
 
