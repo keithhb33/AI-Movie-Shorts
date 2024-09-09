@@ -1,0 +1,20 @@
+client_secrets.json
+__pycache__\
+clips/*
+output/*
+output_audio/*
+temp_movies/
+tiktok_output/*
+Good Summaries\
+movies_retired\
+download_playlist.py
+scripts/srt_files/*
+scripts/parsed_scripts/*
+scripts/audio_extractions/*
+cookies.txt
+/client_secrets.json
+movies_retired/
+movies/*
+tiktok_uploader\
+tiktok_uploader/
+tiktok_uploader/*
