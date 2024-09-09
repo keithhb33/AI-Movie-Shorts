@@ -54,6 +54,12 @@ Ensure all filenames are the titles of their respective movies (Ex: "American Ps
 
 Click "Start Generation"
 
+If the algorithm cannot find a particular movie script, it will ask for you to place it in scripts/srt_files/{movie_title}_summary.txt.
+Find the movie script online and paste it into this file. Then rerun "Start Generation."
+
+For non-public movies, the algorithm may have trouble finding an SRT file for the movie. If this error occurs, find an SRT file
+for your movie/video and place it in scripts/srt_files/{movie_title}.srt
+
 After all narrations are complete, the GUI will indicate such. Processed movie shorts can be viewed in the "output" directory.
 Here is an example movie short: [Watch Short](https://youtu.be/TBBme4gQ9G8)
 
