@@ -18,7 +18,6 @@ python3 -m pip install -r requirements.txt
 #Remove .placeholder files (Windows PowerShell Terminal Command):
 Get-ChildItem -Recurse -Filter ".placeholder" | Remove-Item
 
-
 ```
 
 <h3>OpenAI API Setup & Configuration</h3>
@@ -55,9 +54,8 @@ Ensure all filenames are the titles of their respective movies (Ex: "American Ps
 
 Click "Start Generation"
 
-After all narrations are complete, the GUI will indicate such. Processed trailers can be viewed in the "output" directory.
-
-If properly configured, all of the .MP4 files in the directory "output" will be uploaded to YouTube, each upload sharing the name of the original file placed in "movies" along with a preloaded description.
+After all narrations are complete, the GUI will indicate such. Processed movie shorts can be viewed in the "output" directory.
+Here is an example movie short: [Watch Short](https://youtu.be/TBBme4gQ9G8)
 
 
 <h3>(Optional) YouTube API Setup & Configuration</h3>
