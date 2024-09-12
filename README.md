@@ -1,6 +1,7 @@
 # AI-Movie-Shorts
 Turn full movies or .MP4 Files into AI-generated movie trailers and summaries using OpenAI.
 
+Example Video: [Citizen Kane (1941)](https://www.youtube.com/watch?v=ej8c0NwKW00&t=5s)
 
 <h3>Basic Installation Steps</h3>
 
