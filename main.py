@@ -719,7 +719,12 @@ class Gui:
 
     def open_directory(self, path):
         path = os.path.realpath(path)
-        os.startfile(path)
+        if sys.platform == "win32":
+            os.startfile(path)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", path])
+        else:
+            subprocess.run(["xdg-open", path])
 
     @staticmethod            
     def get_SRT_response(script, models="gpt-4o"):
@@ -800,4 +805,5 @@ if __name__ == "__main__":
         
     root = tk.Tk()
     GUI = Gui(root)
+
     root.mainloop()
