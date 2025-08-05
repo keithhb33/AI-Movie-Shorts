@@ -1,4 +1,4 @@
-moviepy
+moviepy==1.0.3
 ffmpeg-python
 subliminal
 babelfish
@@ -15,4 +15,6 @@ PyBetterFileIO
 pydub
 moviepy
 speechrecognition
+google-api-python-client
+oauth2client
 httplib2
