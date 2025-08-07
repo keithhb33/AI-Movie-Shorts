@@ -18,3 +18,23 @@ movies/*
 tiktok_uploader\
 tiktok_uploader/
 tiktok_uploader/*
+
+# Local env and editor
+.venv/
+.vscode/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Sensitive runtime config
+config.json
+
+# Build/output caches
+clips/
+output/
+output_audio/
+tiktok_output/
+movies/
+scripts/srt_files/
+scripts/parsed_scripts/
+scripts/audio_extractions/
