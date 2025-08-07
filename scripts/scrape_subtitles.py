@@ -5,6 +5,7 @@ import io
 import sys
 import os
 
+
 def parse_movie_title(movie_title):
     parsed_movie_title = movie_title.replace("'", '').replace(' ', '-').replace(' ', '-').replace('(', '').replace(')', '').lower()
     if parsed_movie_title.endswith("ii"):
@@ -15,10 +16,11 @@ def parse_movie_title(movie_title):
         parsed_movie_title += "-4"
     return parsed_movie_title
 
+
 def download_subtitle(parsed_movie_title, movie_title):
     url = f"https://subf2m.co/subtitles/{parsed_movie_title}/english"
     print(f"Accessing URL: {url}")
-    
+
     response = requests.get(url)
     if response.status_code != 200:
         print(f"Failed to access URL: {url}, Status code: {response.status_code}")
@@ -81,11 +83,13 @@ def download_subtitle(parsed_movie_title, movie_title):
                 out_file.write(srt_file.read())
         print(f"Subtitle downloaded and saved as {movie_title}.srt")
 
-if len(sys.argv) > 1:
-    movie_title = sys.argv[1]
-else:
-    print("Pass a movie title as an argument")
-    os._exit(0)
 
-parsed_movie_title = parse_movie_title(movie_title)
-download_subtitle(parsed_movie_title, movie_title)
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        movie_title = sys.argv[1]
+    else:
+        print("Pass a movie title as an argument")
+        os._exit(0)
+
+    parsed_movie_title = parse_movie_title(movie_title)
+    download_subtitle(parsed_movie_title, movie_title)

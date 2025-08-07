@@ -1,44 +1,31 @@
 import os
-import math
 import tkinter as tk
+from tkinter import filedialog, messagebox
 import sys
 import random
 import re
 from moviepy.editor import VideoFileClip, concatenate_videoclips, AudioFileClip
 from moviepy.audio.AudioClip import concatenate_audioclips
 import moviepy.editor as mpe
-from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
-import ffmpeg
 from moviepy.audio.io.AudioFileClip import AudioFileClip
-import random
-from subliminal import download_best_subtitles, region, save_subtitles
-from subliminal.cli import cache_file
-from subliminal.video import Video
-from babelfish import Language
-import pyttsx3
-from mutagen.mp3 import MP3
+from moviepy.audio.AudioClip import AudioArrayClip
 from bs4 import BeautifulSoup
 import requests
-from mutagen.mp4 import MP4
 from moviepy.editor import *
-from os import path
-import speech_recognition as sr
-from pydub import *
-import re
-import sys
 import shutil
 import ast
-from make_mp3_same_volume import *
 from moviepy.video.fx.all import speedx
-from mutagen.mp3 import MP3
-from youtube_upload import *
-import subprocess
-import shlex
-import openai
+from youtube_upload import upload_video
+from scripts.scrape_subtitles import parse_movie_title, download_subtitle
+from scripts.scrape_script import get_movie_script, save_script
+from combine_srt_script import combine_for_title
+import webbrowser
+import time
+from openai import OpenAI
 import threading
+import numpy as np
 import elevenlabs
 import moviepy.video.fx.all as vfx
-from timestamp_assignments import *
 from PyBetterFileIO import *
 import json
 
@@ -55,6 +42,9 @@ def load_config(file_path):
 config = load_config('config.json')
 open_api_key = config.get('open_api_key')
 elevenlabs_api_key = config.get('elevenlabs_api_key')
+if open_api_key:
+    os.environ['OPENAI_API_KEY'] = open_api_key
+client = OpenAI()
 
 class Gui:
     def __init__(self, root):
@@ -68,9 +58,6 @@ class Gui:
         root.geometry("500x700")
         root.iconbitmap("images/icon.ico")
         self.progress_label = None
-        if open_api_key == "OPEN_AI_API_KEY HERE" or open_api_key == "":
-            self.upload_button.config(state=tk.DISABLED)
-            self.start_button.config(state=tk.DISABLED)
         
         self.uploaded_movies = 0
         
@@ -111,10 +98,13 @@ class Gui:
 
         self.upload_button = tk.Button(root, text="Upload all to YouTube", command=self.upload_to_youtube, font=("Helvetica", 14), height=2, width=20, bg='red', fg='white')
         self.upload_button.pack(pady=10)
+        if open_api_key == "OPENAPIKEY" or open_api_key == "":
+            self.upload_button.config(state=tk.DISABLED)
+            self.start_button.config(state=tk.DISABLED)
         
         
         self.progress_status = tk.StringVar()
-        movie_count = Gui.get_number_of_movies(movies_dir, output_dir, len(os.listdir(movies_dir)))
+        movie_count = Gui.get_number_of_movies(movies_dir, output_dir, 0)
         self.progress_status.set(f"0/{movie_count} Generated")
         
         self.progress_label = tk.Label(root, textvariable=self.progress_status, font=("Helvetica", 14))
@@ -155,44 +145,43 @@ class Gui:
 
         
     def end_program(self):
-        if open_api_key == "OPEN_AI_API_KEY HERE":
+        if open_api_key == "OPENAPIKEY":
             print("Enter a valid openai_api key")
         os._exit(0)
         
     @staticmethod
-    def get_number_of_movies(movies_dir, output_dir, num_of_movies):
-        if len(os.listdir(output_dir)) > 0:
-            for i in range(len(output_dir)):
-                for movie in os.listdir(output_dir):
-                    try:
-                        if movie in os.listdir(movies_dir)[i]:
-                            num_of_movies += -1
-                    except Exception as e:
-                        continue
-        return num_of_movies
+    def get_number_of_movies(movies_dir, output_dir, _unused=None):
+        """Return the number of pending .mp4 movies to process.
+        - Only counts files in movies_dir that end with .mp4 (case-insensitive)
+        - Excludes movies that already have a processed output .mp4 (non-vertical) in output_dir
+        - Ignores hidden/system files such as .DS_Store or .placeholder
+        """
+        try:
+            movies = [
+                f for f in os.listdir(movies_dir)
+                if os.path.isfile(os.path.join(movies_dir, f)) and f.lower().endswith('.mp4')
+            ]
+        except FileNotFoundError:
+            movies = []
+        try:
+            processed_titles = {
+                os.path.splitext(f)[0]
+                for f in os.listdir(output_dir)
+                if os.path.isfile(os.path.join(output_dir, f)) and f.lower().endswith('.mp4') and '_vertical' not in f
+            }
+        except FileNotFoundError:
+            processed_titles = set()
+        pending = [m for m in movies if os.path.splitext(m)[0] not in processed_titles]
+        return len(pending)
 
-    @staticmethod
-    def chatGPT_response(message, number_of_words, movie_title):
-        try:                
-            openai.api_key = open_api_key
-                
-            response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[
-                    {"role": "system", "content": "You are a movie expert."},
-                    {"role": "user", "content": message},
-                ]
-            )
-                
-            answer = response['choices'][0]['message']['content']
-                
-            if "here's a summary of" in answer:
-                answer = answer.replace("here's a summary of", "")
-                
-            return "Here we go (spoilers ahead)" + (response['choices'][0]['message']['content'])
-        except Exception as e:
-            time.sleep(1)
-            return Gui.chatGPT_response(message, number_of_words, movie_title)
+    def prompt_for_srt(self, expected_path, movie_title):
+        messagebox.showinfo("SRT required", f"No subtitles found for '{movie_title}'. Please select the SRT file to continue.")
+        srt_file = filedialog.askopenfilename(title=f"Select SRT for {movie_title}", filetypes=[("SRT files", "*.srt *.SRT")])
+        if srt_file and os.path.isfile(srt_file):
+            os.makedirs(os.path.dirname(expected_path), exist_ok=True)
+            shutil.copyfile(srt_file, expected_path)
+            return True
+        return False
     
     @staticmethod
     def is_within_word_limit(response, number_of_words, tolerance=50):
@@ -257,16 +246,7 @@ class Gui:
         
     def start_process(self, movies_dir, output_dir):
         
-        num_of_movies = len(os.listdir(movies_dir))
-        
-        if len(os.listdir(output_dir)) > 0:
-            for i in range(len(output_dir)):
-                for movie in os.listdir(output_dir):
-                    try:
-                        if movie in os.listdir(movies_dir)[i]:
-                            num_of_movies += -1
-                    except Exception as e:
-                        continue
+        num_of_movies = Gui.get_number_of_movies(movies_dir, output_dir, 0)
         
         if num_of_movies == 0:
             return ""
@@ -325,21 +305,11 @@ class Gui:
 
     def process_movies(self, num_of_movies, movies_dir, output_dir):
 
-        movie_array = [f for f in os.listdir(movies_dir) if os.path.isfile(os.path.join(movies_dir, f))]
+        movie_array = [
+            f for f in os.listdir(movies_dir)
+            if os.path.isfile(os.path.join(movies_dir, f)) and f.endswith(".mp4")
+        ]
         print(movie_array)
-        for i in range(len(output_dir)):
-            for movie in os.listdir(output_dir):
-                try:
-                    if movie in movie_array[i]:
-                        num_of_movies += -1
-                        movie_array.remove(os.path.join(movies_dir, movie))
-
-                except Exception as e:
-                    continue
-                
-        for movie in os.listdir(movies_dir):
-            if not movie.endswith(".mp4"):
-                movie_array.remove(os.path.join(movies_dir, movie))
         
         processed_movies = 0
         
@@ -349,19 +319,13 @@ class Gui:
         i = 0
         while i < num_of_movies:
             if len(os.listdir(output_dir)) > 0:
-                for j in range(len(output_dir)):
-                    for movie in os.listdir(output_dir):
-                        try:
-                            if movie in os.listdir(movies_dir)[j]:
-                                num_of_movies += -1
-                        except Exception as e:
-                            continue
+                processed_titles = {os.path.splitext(f)[0] for f in os.listdir(output_dir) if f.endswith('.mp4') and '_vertical' not in f}
+                movie_array = [m for m in movie_array if os.path.splitext(m)[0] not in processed_titles]
+                num_of_movies = len(movie_array)
             
             movie_title = str(movie_array[i])[:-4]
             video = VideoFileClip(os.path.join(movies_dir, str(movie_array[i])))
             duration_in_seconds = video.duration
-            
-            openai.api_key = open_api_key
             
             input_dir_srt = f"scripts/srt_files/{movie_title}.srt"
             output_dir_srt = f"scripts/srt_files/{movie_title}_modified.srt"
@@ -371,24 +335,29 @@ class Gui:
             
             output_dir_script = f'scripts/srt_files/{movie_title}_summary.txt'
             try:
-                srt = subprocess.run(['python', subtitles_path, movie_title])
+                parsed_title = parse_movie_title(movie_title)
+                download_subtitle(parsed_title, movie_title)
                 
                 if not os.path.isfile(input_dir_srt):
-                    input(f"SRT file for {movie_title} not available. Please manually place it in {input_dir_srt}. Hit enter to continue.")
+                    if not self.prompt_for_srt(input_dir_srt, movie_title):
+                        print(f"SRT file for {movie_title} not provided. Skipping this movie.")
+                        continue
 
                 if not os.path.isfile(output_dir_srt):
                     Gui.convert_srt_timestamps(input_dir_srt, output_dir_srt)
                     os.remove(input_dir_srt)
                 
-                Gui.get_movie_plot_summary(movie_title)
-                script_movie = subprocess.run(['python', script_path, output_dir_script, movie_title])
+                script = get_movie_script(movie_title)
+                if script:
+                    save_script(script.replace("\t", "").replace("  ", ""), output_dir_script)
                 if not os.path.isfile(output_dir_script):
-                    input(f"Getting {movie_title} script failed. Manually place the script at '{output_dir_script}'\nHit 'Enter' after completed.")
-                    
-                try:
-                    movie_scene_by_scene = subprocess.run(['python', "combine_srt_script.py", movie_title])
-                except Exception as e:
-                    raise Exception("Problem analyzing SRT and Script files.")
+                    print(f"Script for {movie_title} not found. Proceeding without script summary.")
+                
+                if os.path.isfile(output_dir_srt) and os.path.isfile(output_dir_script):
+                    try:
+                        combine_for_title(movie_title)
+                    except Exception as e:
+                        print(f"Problem analyzing SRT and Script files for {movie_title}: {e}")
 
             except Exception as e:
                 print(e)
@@ -410,9 +379,13 @@ class Gui:
                 data = srt_file.read()
             print(data)
             print("DURATION OF MOVIE: " + str(duration_in_seconds))
-            #Gui.get_movie_plot_summary(movie_title)
-            with open(f"scripts/srt_files/{movie_title}_combined.txt", 'r') as file:
-                combined_script = file.read()
+            combined_path = f"scripts/srt_files/{movie_title}_combined.txt"
+            if os.path.isfile(combined_path):
+                with open(combined_path, 'r') as file:
+                    combined_script = file.read()
+            else:
+                with open(output_dir_srt, 'r') as file:
+                    combined_script = file.read()
             
             
             script = f'''Read and understand this script of the movie {movie_title}, which includes timestamps (indicating number of seconds into the movie): "{combined_script}"
@@ -451,15 +424,41 @@ class Gui:
             adjusted_clips = []
             for j in range(len(audio_outputs)):
                 clip = clips[j]
-                audio = audio_outputs[j]
+                narration = audio_outputs[j]
 
-                slowdown_factor = audio.duration / clip.duration
-                
-                if abs(clip.duration - audio.duration) > 4:
-                    clip = clip.fl_time(lambda t: t / slowdown_factor, apply_to=['mask', 'audio'])
-                    clip = clip.set_duration(audio.duration)
+                # Remove any existing audio from the video segment to avoid layering
+                try:
+                    clip = clip.without_audio()
+                except Exception:
+                    clip = clip.set_audio(None)
 
-                clip = clip.set_audio(audio.volumex(4.0))
+                target_dur = clip.duration
+                narr_dur = narration.duration
+                tol = 0.02  # 20 ms tolerance for floating point safety
+
+                # If narration is longer, stretch the video (not the audio) to match the narration length
+                if narr_dur > target_dur + tol:
+                    factor = max(0.01, narr_dur / target_dur)
+                    clip = clip.fl_time(lambda t: t / factor, apply_to=['mask'])
+                    # Set the clip duration slightly under narration to avoid boundary read errors
+                    eps = 0.005
+                    clip = clip.set_duration(max(0, narr_dur - eps))
+                    target_dur = clip.duration
+                    # Ensure narration matches final clip duration exactly (safe to trim by eps if needed)
+                    if narration.duration > target_dur + 1e-3:
+                        narration = narration.subclip(0, target_dur)
+
+                # If narration is shorter, pad with a tiny silence tail to match clip duration
+                elif narr_dur < target_dur - tol:
+                    sr = 44100
+                    pad = max(0, target_dur - narr_dur)
+                    pad_len = int(np.ceil(pad * sr))
+                    silence = np.zeros((pad_len, 2), dtype=np.float32)
+                    silence_clip = AudioArrayClip(silence, fps=sr)
+                    narration = concatenate_audioclips([narration, silence_clip]).set_duration(target_dur)
+
+                # Set the narration as the clip's audio
+                clip = clip.set_audio(narration.volumex(4.0))
                 adjusted_clips.append(clip)
 
             final_clip = concatenate_videoclips(adjusted_clips)
@@ -490,6 +489,9 @@ class Gui:
 
             background_music = background_music.volumex(0.1)
 
+            # Align background music to exactly match the final video duration
+            background_music = background_music.set_duration(final_clip.duration)
+
             combined_audio = CompositeAudioClip([final_clip.audio, background_music])
             final_clip = final_clip.set_audio(combined_audio)
 
@@ -507,7 +509,7 @@ class Gui:
         self.processing_label.config(text="Process Complete")
         self.stop_uploading_button.destroy()
         self.stop_button.destroy()
-        if open_api_key != "OPEN_AI_API_KEY HERE" and open_api_key != "":
+        if open_api_key != "OPENAPIKEY" and open_api_key != "":
             self.start_button.config(state=tk.NORMAL)
             self.start_button.destroy()
             self.upload_button.config(state=tk.NORMAL)
@@ -680,13 +682,13 @@ class Gui:
     
     
     def upload_individual(self, movietitle):
-            # Set the command
-        command = f'python3 youtube_upload.py --file="output/{movietitle}.mp4" --title="{movietitle}" --description="Like, comment, and subscribe for more top tier movie content." --category="22" --privacyStatus="public"'
-        args = shlex.split(command)
-    
-        # Run the command
-        subprocess.run(args)
-        
+        upload_video(
+            file=f'output/{movietitle}.mp4',
+            title=movietitle,
+            description="Like, comment, and subscribe for more top tier movie content.",
+            category="22",
+            privacyStatus="public"
+        )
         self.uploading_label.config(text="Upload Attempt Complete")
 
 
@@ -704,7 +706,7 @@ class Gui:
                 self.uploading_label.config(text = "Uploads Complete")
 
             
-        if open_api_key != "OPEN_AI_API_KEY HERE":
+        if open_api_key != "OPENAPIKEY":
             self.upload_button.config(state=tk.NORMAL)
         self.uploading_label.config(text="Uploading...")
         
@@ -721,31 +723,23 @@ class Gui:
         path = os.path.realpath(path)
         if sys.platform == "win32":
             os.startfile(path)
-        elif sys.platform == "darwin":
-            subprocess.run(["open", path])
         else:
-            subprocess.run(["xdg-open", path])
+            webbrowser.open(f'file://{path}')
 
     @staticmethod            
-    def get_SRT_response(script, models="gpt-4o"):
-        try:                
-            openai.api_key = open_api_key
-                    
-            response = openai.ChatCompletion.create(
-            model=models,
-            messages=[
-                    {"role": "system", "content": "You are a movie expert."},
-                    {"role": "user", "content": script},
-                ]
+    def get_SRT_response(script):
+        try:
+            prompt = script
+            response = client.responses.create(
+                model="gpt-5-mini",
+                reasoning={"effort": "high"},
+                input=[{"role": "user", "content": prompt}]
             )
-                    
-            answer = response['choices'][0]['message']['content']
-            
-            return answer
+            return response.output_text
         except Exception as e:
-            time.sleep(37)
             print("GPT Failed... retrying... " + str(e))
-            if "too large" in str(e):
+            time.sleep(37)
+            if "too large" in str(e).lower():
                 return "error", "error"
             else:
                 return Gui.get_SRT_response(script)
@@ -776,7 +770,18 @@ if __name__ == "__main__":
     num_clips = random.randint(MIN_NUM_CLIPS, MAX_NUM_CLIPS)
 
     
-    folders = ["clips", "movies", "output", "backgroundmusic", "scripts", "output_audio", os.path.join("scripts", "audio_extractions"), os.path.join("scripts", "parsed_scripts")]
+    folders = [
+        "clips",
+        "movies",
+        "output",
+        "backgroundmusic",
+        "scripts",
+        "output_audio",
+        "tiktok_output",
+        os.path.join("scripts", "audio_extractions"),
+        os.path.join("scripts", "parsed_scripts"),
+        os.path.join("scripts", "srt_files"),
+    ]
     create_folders(folders)
     
     for file in os.listdir("movies"):

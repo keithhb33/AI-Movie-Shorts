@@ -1,0 +1,3 @@
+[console_scripts]
+tiktok-auth = tiktok_uploader.cli:auth
+tiktok-uploader = tiktok_uploader.cli:main

@@ -3,6 +3,7 @@ import os
 import random
 import sys
 import time
+import argparse as _argparse
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -147,8 +148,28 @@ def resumable_upload(insert_request):
 
       max_sleep = 2 ** retry
       sleep_seconds = random.random() * max_sleep
-      print("Sleeping _ seconds and then retrying...")
+      print(f"Sleeping {sleep_seconds:.2f} seconds and then retrying...")
       time.sleep(sleep_seconds)
+
+# Programmatic API for uploading without spawning a subprocess
+# Options mirror the CLI flags used in the __main__ block below.
+
+def upload_video(file, title, description="Test Description", category="22", privacyStatus=VALID_PRIVACY_STATUSES[0], keywords=""):
+  if not os.path.exists(file):
+    raise FileNotFoundError("Please specify a valid file path for upload.")
+  # Use oauth2client.tools' argparser to get default auth flags
+  auth_flags = argparser.parse_args(args=[])
+  youtube = get_authenticated_service(auth_flags)
+  # Build an argparse-like options object for initialize_upload
+  options = _argparse.Namespace(
+    file=file,
+    title=title,
+    description=description,
+    category=category,
+    keywords=keywords,
+    privacyStatus=privacyStatus
+  )
+  initialize_upload(youtube, options)
 
 if __name__ == '__main__':
   argparser.add_argument("--file", required=True, help="Video file to upload")
