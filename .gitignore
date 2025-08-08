@@ -9,8 +9,6 @@ Good Summaries\
 movies_retired\
 download_playlist.py
 scripts/srt_files/*
-scripts/parsed_scripts/*
-scripts/audio_extractions/*
 cookies.txt
 /client_secrets.json
 movies_retired/
@@ -38,5 +36,3 @@ output_audio/
 tiktok_output/
 movies/
 scripts/srt_files/
-scripts/parsed_scripts/
-scripts/audio_extractions/

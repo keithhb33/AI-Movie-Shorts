@@ -45,8 +45,6 @@ directories = [
     "scripts",
     "output_audio",
     "tiktok_output",
-    os.path.join("scripts", "audio_extractions"),
-    os.path.join("scripts", "parsed_scripts"),
     os.path.join("scripts", "srt_files")
 ]
 for path in directories:

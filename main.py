@@ -911,6 +911,28 @@ def create_folders(folders):
         if not os.path.isdir(folder):
             os.makedirs(folder)
 
+def ensure_project_dirs(extra_dirs=None):
+    """
+    Ensure that all non-hidden directories under the project root exist, and
+    optionally ensure additional directories (e.g., expected app folders).
+    Hidden directories (starting with '.') are ignored.
+    """
+    root = os.getcwd()
+    dirs = set()
+    for dirpath, dirnames, filenames in os.walk(root):
+        # skip hidden directories in-place to prevent walking them
+        dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+        rel = os.path.relpath(dirpath, root)
+        # collect only non-root, non-hidden paths
+        if rel != '.' and not any(p.startswith('.') for p in rel.split(os.sep)):
+            dirs.add(rel)
+    if extra_dirs:
+        for d in extra_dirs:
+            if d:
+                dirs.add(d)
+    for d in sorted(dirs):
+        os.makedirs(d, exist_ok=True)
+
             
 
 if __name__ == "__main__":
@@ -927,11 +949,9 @@ if __name__ == "__main__":
         "scripts",
         "output_audio",
         "tiktok_output",
-        os.path.join("scripts", "audio_extractions"),
-        os.path.join("scripts", "parsed_scripts"),
         os.path.join("scripts", "srt_files"),
     ]
-    create_folders(folders)
+    ensure_project_dirs(folders + [os.path.join("clips", "audio"), "movies_retired"])
     
     for file in os.listdir("movies"):
         if "-" in file:
@@ -952,10 +972,7 @@ if __name__ == "__main__":
     for audio in out_aud:
         os.remove("output_audio/" + audio)
         
-    main_directory = ""
-    file_name = ".placeholder"
-    delete_files(main_directory, file_name)
-
+    
     root = tk.Tk()
     GUI = Gui(root)
 
