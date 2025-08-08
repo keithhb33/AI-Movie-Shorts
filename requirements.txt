@@ -1,0 +1,10 @@
+moviepy==1.0.3
+ffmpeg-python
+beautifulsoup4
+requests
+openai
+elevenlabs
+PyBetterFileIO
+google-api-python-client
+oauth2client
+httplib2
