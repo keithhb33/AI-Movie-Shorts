@@ -18,9 +18,11 @@ movies/*
 tiktok_uploader\
 tiktok_uploader/
 tiktok_uploader/*
+config.sample.json
 
 # Local env and editor
 .venv/
+.qodo/
 .vscode/
 __pycache__/
 *.pyc

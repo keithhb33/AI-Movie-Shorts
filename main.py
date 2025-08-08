@@ -29,6 +29,19 @@ import moviepy.video.fx.all as vfx
 from PyBetterFileIO import *
 import json
 
+# Pillow 10+ removed Image.ANTIALIAS; monkey-patch for MoviePy compatibility
+try:
+    from PIL import Image as _PILImage
+    if not hasattr(_PILImage, "ANTIALIAS"):
+        try:
+            _resample = _PILImage.Resampling.LANCZOS
+        except Exception:
+            _resample = getattr(_PILImage, "LANCZOS", None)
+        if _resample is not None:
+            _PILImage.ANTIALIAS = _resample
+except Exception:
+    pass
+
 MIN_NUM_CLIPS = 20
 MAX_NUM_CLIPS = 30
 MIN_TOTAL_DURATION = 2.5 * 60
@@ -44,6 +57,9 @@ open_api_key = config.get('open_api_key')
 elevenlabs_api_key = config.get('elevenlabs_api_key')
 if open_api_key:
     os.environ['OPENAI_API_KEY'] = open_api_key
+if elevenlabs_api_key:
+    os.environ['ELEVEN_API_KEY'] = elevenlabs_api_key
+    os.environ['ELEVENLABS_API_KEY'] = elevenlabs_api_key
 client = OpenAI()
 
 class Gui:
@@ -392,6 +408,7 @@ class Gui:
             print(data)
             print("DURATION OF MOVIE: " + str(duration_in_seconds))
             combined_path = f"scripts/srt_files/{movie_title}_combined.txt"
+            combined_script = ""
             if os.path.isfile(combined_path):
                 with open(combined_path, 'r') as file:
                     combined_script = file.read()
@@ -399,9 +416,14 @@ class Gui:
                 with open(output_dir_srt, 'r') as file:
                     combined_script = file.read()
             
+            if not combined_script:
+                print("ERROR: NO COMBINED SCRIPT FOUND")
+                os._exit(0)
             
+
+
             script = f'''Read and understand this script of the movie {movie_title}, which includes timestamps (indicating number of seconds into the movie): "{combined_script}"
-            From this, choose {num_clips} time ranges that are most essential to the plot and development of the movie's story. Each chosen range should be in between 10 seconds and 30 seconds. Choose ranges from the script provided or combinations of such.
+            From this, choose {num_clips} time ranges that are most essential to the plot and development of the movie's story. Ranges will likely vary, but it's up to you to decide how many time ranges you need based on the information provided. Choose ranges from the script provided or combinations of such.
             Only output the time ranges, formatted in a Python dictionary in the format of: {{"120-145": "PLOT SUMMARY OF WHAT OCCURS DURING THAT TIME RANGE", "280-300": ...}}
             Don't overlap time ranges.
             Each value in this dictionary should be a commentary describing what is happening in the scene. This should be a description of each event within the time duration. Consult the SRT script. Use full sentences like you're a commentator speaking to an audience going scene-by-scene for each dict value.
@@ -431,7 +453,11 @@ class Gui:
                 clips, audio_outputs = Gui.split_video_importance("movies/" + str(movie_array[i]), "clips", response)
             except Exception as e:
                 clips, audio_outputs = Gui.split_video_importance("movies/" + str(movie_array[i]), "clips", response)     
-        
+
+            if not clips or not audio_outputs:
+                print("No clips or audio generated for this movie. Skipping.")
+                i += 1
+                continue
             
             adjusted_clips = []
             for j in range(len(audio_outputs)):
@@ -444,34 +470,36 @@ class Gui:
                 except Exception:
                     clip = clip.set_audio(None)
 
-                target_dur = clip.duration
-                narr_dur = narration.duration
-                tol = 0.02  # 20 ms tolerance for floating point safety
+                vid_dur = float(clip.duration or 0)
+                narr_dur = float(narration.duration or 0)
+                if narr_dur <= 0 or vid_dur <= 0:
+                    # Skip unusable segments
+                    continue
 
-                # If narration is longer, stretch the video (not the audio) to match the narration length
-                if narr_dur > target_dur + tol:
-                    factor = max(0.01, narr_dur / target_dur)
-                    clip = clip.fl_time(lambda t: t / factor, apply_to=['mask'])
-                    # Set the clip duration slightly under narration to avoid boundary read errors
-                    eps = 0.005
-                    clip = clip.set_duration(max(0, narr_dur - eps))
-                    target_dur = clip.duration
-                    # Ensure narration matches final clip duration exactly (safe to trim by eps if needed)
-                    if narration.duration > target_dur + 1e-3:
-                        narration = narration.subclip(0, target_dur)
+                # Compute speed factor so retimed video duration matches narration
+                # speedx: factor > 1 => faster (shorter); factor < 1 => slower (longer)
+                target_factor = max(0.05, min(20.0, vid_dur / narr_dur))
 
-                # If narration is shorter, pad with a tiny silence tail to match clip duration
-                elif narr_dur < target_dur - tol:
-                    sr = 44100
-                    pad = max(0, target_dur - narr_dur)
-                    pad_len = int(np.ceil(pad * sr))
-                    silence = np.zeros((pad_len, 2), dtype=np.float32)
-                    silence_clip = AudioArrayClip(silence, fps=sr)
-                    narration = concatenate_audioclips([narration, silence_clip]).set_duration(target_dur)
+                try:
+                    retimed = clip.fx(vfx.speedx, factor=target_factor)
+                except Exception:
+                    # Fallback to time-warp if speedx not available
+                    f = target_factor
+                    retimed = clip.fl_time(lambda t: t * f, apply_to=['mask'])
 
-                # Set the narration as the clip's audio
-                clip = clip.set_audio(narration.volumex(4.0))
-                adjusted_clips.append(clip)
+                # Force exact duration match to narration, minus tiny epsilon to avoid EOF reads
+                eps = 0.005
+                retimed = retimed.set_duration(max(0, narr_dur - eps))
+
+                # Align narration to exact duration as well (trim or set duration)
+                if narration.duration > narr_dur - 1e-3:
+                    narration = narration.subclip(0, max(0, narr_dur - eps))
+                else:
+                    narration = narration.set_duration(max(0, narr_dur - eps))
+
+                # Set the narration as the clip's audio (slightly lower volume to leave room for BGM)
+                retimed = retimed.set_audio(narration.volumex(2.5))
+                adjusted_clips.append(retimed)
 
             final_clip = concatenate_videoclips(adjusted_clips)
             final_clip_duration = final_clip.duration
@@ -610,88 +638,198 @@ class Gui:
             # Load the video
             video = VideoFileClip(input_file)
 
-            if video.duration < 59 * 4:
-                clips = [video]
-                return clips
-
-            # Make sure the output directory exists
+            # Ensure output directories exist
             os.makedirs(output_dir, exist_ok=True)
             audio_output_dir = os.path.join(output_dir, "audio")
             os.makedirs(audio_output_dir, exist_ok=True)
 
             clips = []
             audio_clips = []
+
+            # Detect ElevenLabs SDK style (support both new client path and legacy)
+            elevenlabs_client = None
+            try:
+                ElevenLabsClass = getattr(elevenlabs, "ElevenLabs", None)
+                if ElevenLabsClass is not None:
+                    elevenlabs_client = ElevenLabsClass(api_key=elevenlabs_api_key)
+            except Exception:
+                elevenlabs_client = None
+            if elevenlabs_client is None:
+                try:
+                    # Newer SDKs expose client under elevenlabs.client
+                    from elevenlabs.client import ElevenLabs as _ELClient  # type: ignore
+                    elevenlabs_client = _ELClient(api_key=elevenlabs_api_key)
+                except Exception:
+                    pass
+
             for i, time_range in enumerate(response_list.keys()):
                 start_str, end_str = time_range.split('-')
                 start = int(start_str)
                 end = int(end_str)
 
                 if end > video.duration:
-                    end = video.duration
+                    end = int(video.duration)
+                if end <= start:
+                    continue
 
                 clip = video.subclip(start, end)
 
                 output_file = os.path.join(output_dir, f"clip_{i+1}.mp4")
-                clip.write_videofile(output_file, codec='libx264')
+                clip.write_videofile(output_file, codec='libx264', audio=False, logger=None)
 
                 clips.append(clip)
 
                 narration_script = response_list[time_range]
-                elevenlabs.set_api_key(elevenlabs_api_key)
-                audio = elevenlabs.generate(
-                    text=narration_script,
-                    voice="Liam",
-                    model="eleven_multilingual_v2"
-                )
                 audio_file_path = os.path.join(audio_output_dir, f"audio_{i+1}.mp3")
-                elevenlabs.save(audio, audio_file_path)
 
-                audio_clip = AudioFileClip(audio_file_path)
+                try:
+                    # Helper to write bytes or chunks
+                    def _write_audio_file(obj, path):
+                        # Prefer using SDK's save if available and obj is not plain bytes
+                        if hasattr(elevenlabs, "save") and not isinstance(obj, (bytes, bytearray)):
+                            try:
+                                elevenlabs.save(obj, path)
+                                return
+                            except Exception:
+                                pass
+                        try:
+                            with open(path, "wb") as f:
+                                if isinstance(obj, (bytes, bytearray)):
+                                    f.write(obj)
+                                else:
+                                    try:
+                                        for chunk in obj:
+                                            if not chunk:
+                                                continue
+                                            if isinstance(chunk, (bytes, bytearray, memoryview)):
+                                                f.write(chunk)
+                                            else:
+                                                # Skip non-bytes chunks (e.g., events)
+                                                continue
+                                    except TypeError:
+                                        # Not iterable; last resort
+                                        data = bytes(obj) if not isinstance(obj, (str,)) else obj.encode()
+                                        f.write(data)
+                        except Exception as werr:
+                            raise werr
 
-                audio_clips.append(audio_clip)
+                    success = False
+                    # Try a range of default voices and models commonly available
+                    voices_to_try = ["Liam"]
+                    models_to_try = ["eleven_multilingual_v2", "eleven_monolingual_v1"]
+
+                    if elevenlabs_client is not None:
+                        # Variant A: client.generate(...)
+                        gen_method = getattr(elevenlabs_client, "generate", None)
+                        if callable(gen_method):
+                            for v in voices_to_try:
+                                for m in models_to_try:
+                                    try:
+                                        try:
+                                            audio_obj = gen_method(text=narration_script, voice=v, model=m, output_format="mp3_44100_128")
+                                        except TypeError:
+                                            audio_obj = gen_method(text=narration_script, voice=v, model=m)
+                                        _write_audio_file(audio_obj, audio_file_path)
+                                        if not os.path.exists(audio_file_path) or os.path.getsize(audio_file_path) < 1024:
+                                            raise RuntimeError("Generated audio file is empty or too small")
+                                        success = True
+                                        break
+                                    except Exception:
+                                        continue
+                                if success:
+                                    break
+                        # Variant B: client.text_to_speech.generate/convert(...)
+                        if not success:
+                            tts = getattr(elevenlabs_client, "text_to_speech", None)
+                            if tts is not None:
+                                for meth_name in ("generate", "synthesize"):
+                                    if success:
+                                        break
+                                    meth = getattr(tts, meth_name, None)
+                                    if callable(meth):
+                                        for v in voices_to_try:
+                                            for m in models_to_try:
+                                                try:
+                                                    try:
+                                                        audio_obj = meth(text=narration_script, voice=v, model=m, output_format="mp3_44100_128")
+                                                    except TypeError:
+                                                        audio_obj = meth(text=narration_script, voice=v, model=m)
+                                                    _write_audio_file(audio_obj, audio_file_path)
+                                                    if not os.path.exists(audio_file_path) or os.path.getsize(audio_file_path) < 1024:
+                                                        raise RuntimeError("Generated audio file is empty or too small")
+                                                    success = True
+                                                    break
+                                                except Exception:
+                                                    continue
+                                            if success:
+                                                break
+
+                                if not success:
+                                    meth = getattr(tts, "convert", None)
+                                    if callable(meth):
+                                        for v in voices_to_try:
+                                            for m in ["eleven_multilingual_v2"]:
+                                                try:
+                                                    try:
+                                                        audio_obj = meth(voice_id=v, model_id=m, text=narration_script, output_format="mp3_44100_128")
+                                                    except TypeError:
+                                                        audio_obj = meth(voice_id=v, model_id=m, text=narration_script)
+                                                    _write_audio_file(audio_obj, audio_file_path)
+                                                    if not os.path.exists(audio_file_path) or os.path.getsize(audio_file_path) < 1024:
+                                                        raise RuntimeError("Generated audio file is empty or too small")
+                                                    success = True
+                                                    break
+                                                except Exception:
+                                                    continue
+                                            if success:
+                                                break
+
+                    # Variant C: legacy/top-level generate(...) across SDK versions
+                    if not success and hasattr(elevenlabs, "generate"):
+                        for v in voices_to_try:
+                            for m in models_to_try:
+                                try:
+                                    # Try modern signature
+                                    audio_obj = elevenlabs.generate(text=narration_script, voice=v, model=m)
+                                except TypeError:
+                                    try:
+                                        # Some SDKs expect model_id
+                                        audio_obj = elevenlabs.generate(text=narration_script, voice=v, model_id=m)  # type: ignore
+                                    except TypeError:
+                                        # Some expect voice_id instead of voice name
+                                        audio_obj = elevenlabs.generate(text=narration_script, voice_id=v, model=m)  # type: ignore
+                                _write_audio_file(audio_obj, audio_file_path)
+                                if not os.path.exists(audio_file_path) or os.path.getsize(audio_file_path) < 1024:
+                                    raise RuntimeError("Generated audio file is empty or too small")
+                                success = True
+                                break
+                            if success:
+                                break
+
+                    if not success:
+                        raise RuntimeError("ElevenLabs SDK is installed but no compatible TTS API was found.")
+
+                except Exception as tts_err:
+                    print(f"Failed to generate TTS for clip {i+1}: {tts_err}")
+                    # Remove the last clip to keep lists aligned if TTS failed
+                    if clips:
+                        clips.pop()
+                    continue
+
+                try:
+                    audio_clip = AudioFileClip(audio_file_path)
+                    audio_clips.append(audio_clip)
+                except Exception as audio_load_err:
+                    print(f"Failed to load generated audio for clip {i+1}: {audio_load_err}")
+                    if clips:
+                        clips.pop()
+                    continue
 
             return clips, audio_clips
 
         except Exception as e:
             print(f"An error occurred: {e}")
-            return []
-    
-    @staticmethod
-    def split_video_randomly(input_file, output_dir):
-        try:
-            # Load the video
-            video = VideoFileClip(input_file)
-
-            if video.duration < 59 * 4:
-                clips = [video]
-                return clips
-
-            clip_duration = total_duration / num_clips
-
-            os.makedirs(output_dir, exist_ok=True)
-            time_multiple = (video.duration - clip_duration) / (num_clips - 1)
-
-            start_times = [int(i * time_multiple) for i in range(num_clips)]
-            
-            for time in start_times:
-                if time > 40 and time + 10 < total_duration:
-                    start_times.remove(time)
-                    start_times.append(time+7)
-            start_times = sorted(start_times)
-
-            clips = []
-            for i, start in enumerate(start_times):
-                end = start + clip_duration
-                    
-                clip = video.subclip(start, end)
-                output_file = os.path.join(output_dir, f"clip_{i+1}.mp4")
-                clip.write_videofile(output_file, codec='libx264')
-                clips.append(clip)
-
-            return clips
-        except Exception as e:
-            Gui.split_video_randomly(input_file, output_dir)
-    
+            return [], []
     
     def upload_individual(self, movietitle):
         upload_video(

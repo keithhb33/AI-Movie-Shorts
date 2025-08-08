@@ -151,9 +151,6 @@ def resumable_upload(insert_request):
       print(f"Sleeping {sleep_seconds:.2f} seconds and then retrying...")
       time.sleep(sleep_seconds)
 
-# Programmatic API for uploading without spawning a subprocess
-# Options mirror the CLI flags used in the __main__ block below.
-
 def upload_video(file, title, description="Test Description", category="22", privacyStatus=VALID_PRIVACY_STATUSES[0], keywords=""):
   if not os.path.exists(file):
     raise FileNotFoundError("Please specify a valid file path for upload.")
