@@ -983,8 +983,8 @@ static ClipPlanList openai_make_plan(const Config *cfg,
                                      bool *out_retry_without_script) {
   if (out_retry_without_script) *out_retry_without_script = false;
 
-  const size_t MAX_SUB_CHARS    = 160000;
-  const size_t MAX_SCRIPT_CHARS = 40000;
+  const size_t MAX_SUB_CHARS    = 320000;
+  const size_t MAX_SCRIPT_CHARS = 80000;
 
   char *title_utf8 = sanitize_utf8_lossy(movie_title ? movie_title : "");
   char *subs_utf8  = sanitize_utf8_lossy(subs_seconds_text ? subs_seconds_text : "");
