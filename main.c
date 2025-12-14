@@ -24,19 +24,15 @@
 static const int MIN_NUM_CLIPS = 20;
 static const int MAX_NUM_CLIPS = 30;
 
-/* currently unused, kept as your constants */
 static const int MIN_TOTAL_DURATION = (int)(2.5 * 60);
 static const int MAX_TOTAL_DURATION = (int)(4.5 * 60);
 
-/* Cap video speed-up to keep clips readable (compile may need -lm for llround on some systems). */
 static const double MAX_VIDEO_SPEEDUP = 1.75;
 
 typedef struct {
   char *data;
   size_t size;
 } MemBuf;
-
-/* ---------- logging helpers (so you see success for important steps) ---------- */
 
 static void logv(const char *tag, const char *fmt, va_list ap) {
   fprintf(stderr, "[%s] ", tag);
@@ -118,8 +114,6 @@ static bool write_entire_file(const char *path, const void *data, size_t len) {
   return true;
 }
 
-/* ----------------------------- curl helpers ----------------------------- */
-
 static size_t curl_write_cb(void *contents, size_t size, size_t nmemb, void *userp) {
   size_t realsz = size * nmemb;
   MemBuf *mem = (MemBuf *)userp;
@@ -148,6 +142,7 @@ static MemBuf http_get_to_mem_ex(const char *url, long *http_code_out) {
   curl_easy_setopt(curl, CURLOPT_COOKIEFILE, "");
   curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
   curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 10L);
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&buf);
@@ -168,7 +163,7 @@ static MemBuf http_get_to_mem_ex(const char *url, long *http_code_out) {
   return buf;
 }
 
-static MemBuf http_post_json_to_mem(const char *url, const char *bearer_key, const char *json_body, long *http_code_out) {
+static MemBuf http_post_json_to_mem(const char *url, const char *bearer_key, const char *json_body, long *http_code_out, long timeout_s) {
   CURL *curl = curl_easy_init();
   if (!curl) die("curl init failed");
 
@@ -184,9 +179,19 @@ static MemBuf http_post_json_to_mem(const char *url, const char *bearer_key, con
   curl_easy_setopt(curl, CURLOPT_URL, url);
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_body);
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)strlen(json_body));
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+  curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&buf);
+
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_s);
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+
+  curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+  curl_easy_setopt(curl, CURLOPT_TCP_KEEPIDLE, 60L);
+  curl_easy_setopt(curl, CURLOPT_TCP_KEEPINTVL, 30L);
 
   CURLcode res = curl_easy_perform(curl);
 
@@ -204,8 +209,6 @@ static MemBuf http_post_json_to_mem(const char *url, const char *bearer_key, con
 
   return buf;
 }
-
-/* ----------------------------- shell/ffprobe helpers ----------------------------- */
 
 static char *sh_escape(const char *s) {
   size_t n = strlen(s);
@@ -305,8 +308,6 @@ static double ffprobe_duration_seconds(const char *path) {
   return d;
 }
 
-/* ----------------------------- config ----------------------------- */
-
 typedef struct {
   char openai_key[512];
   char eleven_key[512];
@@ -341,8 +342,6 @@ static Config load_config_json(const char *path) {
   cJSON_Delete(root);
   return c;
 }
-
-/* ----------------------------- SRT conversion ----------------------------- */
 
 static int timestamp_to_seconds(const char *ts) {
   int hh = 0, mm = 0, ss = 0, ms = 0;
@@ -390,8 +389,6 @@ static bool convert_srt_timestamps_to_seconds(const char *input_srt, const char 
   return true;
 }
 
-/* ----------------------------- HTML helpers ----------------------------- */
-
 static char *strcasestr_local(const char *haystack, const char *needle) {
   if (!haystack || !needle) return NULL;
   if (*needle == '\0') return (char *)haystack;
@@ -436,8 +433,6 @@ static bool str_ends_with(const char *s, const char *suffix) {
   if (lf > ls) return false;
   return strcmp(s + (ls - lf), suffix) == 0;
 }
-
-/* ----------------------------- subtitle download (subf2m) ----------------------------- */
 
 static void parse_movie_title_slug(const char *movie_title, char *out, size_t outsz) {
   size_t j = 0;
@@ -577,6 +572,9 @@ static bool download_subtitle_srt(const char *movie_title, const char *dest_srt_
   curl_easy_setopt(curl, CURLOPT_COOKIEFILE, "");
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, zf);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 
   CURLcode res = curl_easy_perform(curl);
   fclose(zf);
@@ -601,8 +599,6 @@ static bool download_subtitle_srt(const char *movie_title, const char *dest_srt_
   return (rc == 0) && file_exists(dest_srt_path);
 }
 
-/* ----------------------------- IMSDb script download (more robust + success logs) ----------------------------- */
-
 static void strip_parens(const char *in, char *out, size_t outsz) {
   size_t j = 0;
   for (size_t i = 0; in[i] && j + 1 < outsz; i++) {
@@ -613,7 +609,6 @@ static void strip_parens(const char *in, char *out, size_t outsz) {
 }
 
 static void imsdb_format_title_loose(const char *movie_title, char *out, size_t outsz) {
-  /* IMSDb titles are usually hyphen-separated; this makes a “best effort” variant. */
   size_t j = 0;
   for (size_t i = 0; movie_title[i] && j + 1 < outsz; i++) {
     unsigned char ch = (unsigned char)movie_title[i];
@@ -623,7 +618,6 @@ static void imsdb_format_title_loose(const char *movie_title, char *out, size_t 
     if (isalnum(ch) || ch == '-' || ch == '_' ) {
       out[j++] = (char)ch;
     }
-    /* drop punctuation like ':' ',' '.' etc */
   }
   out[j] = 0;
 }
@@ -689,12 +683,10 @@ static bool download_imsdb_script_ex(const char *movie_title,
 
   if (used_url && used_url_sz) used_url[0] = 0;
 
-  /* Build a few candidates. */
   char a[512] = {0};
   char b[512] = {0};
   char c[512] = {0};
 
-  /* variant A: original spacing->hyphen (keeps punctuation) */
   {
     size_t j = 0;
     for (size_t i = 0; movie_title[i] && j + 1 < sizeof(a); i++) {
@@ -705,10 +697,7 @@ static bool download_imsdb_script_ex(const char *movie_title,
     a[j] = 0;
   }
 
-  /* variant B: strip parens from A */
   strip_parens(a, b, sizeof(b));
-
-  /* variant C: loose sanitize */
   imsdb_format_title_loose(movie_title, c, sizeof(c));
 
   const char *variants[4] = { a, b, c, NULL };
@@ -728,14 +717,11 @@ static bool download_imsdb_script_ex(const char *movie_title,
       return true;
     }
 
-    /* only “warn” per-attempt; we’ll give a summary at the end */
     logw("IMSDb attempt failed (%s): %s", why, url);
   }
 
   return false;
 }
-
-/* ----------------------------- OpenAI response parsing ----------------------------- */
 
 static char *openai_extract_output_text(const char *resp_json) {
   cJSON *root = cJSON_Parse(resp_json);
@@ -786,7 +772,49 @@ static char *openai_extract_output_text(const char *resp_json) {
   return NULL;
 }
 
-/* ----------------------------- planning structs ----------------------------- */
+static bool openai_resp_should_retry_without_script(const char *resp_json) {
+  if (!resp_json || !resp_json[0]) return false;
+
+  cJSON *root = cJSON_Parse(resp_json);
+  if (!root) return false;
+
+  bool yes = false;
+  cJSON *err = cJSON_GetObjectItemCaseSensitive(root, "error");
+  if (cJSON_IsObject(err)) {
+    const char *m = NULL;
+    const char *c = NULL;
+
+    cJSON *msg = cJSON_GetObjectItemCaseSensitive(err, "message");
+    cJSON *cod = cJSON_GetObjectItemCaseSensitive(err, "code");
+
+    if (cJSON_IsString(msg) && msg->valuestring) m = msg->valuestring;
+    if (cJSON_IsString(cod) && cod->valuestring) c = cod->valuestring;
+
+    if (c && (strcasecmp(c, "context_length_exceeded") == 0 ||
+              strcasecmp(c, "invalid_json") == 0 ||
+              strcasestr_local(c, "context") != NULL)) {
+      yes = true;
+    }
+
+    if (m) {
+      if (strcasestr_local(m, "too large") ||
+          strcasestr_local(m, "message is too long") ||
+          strcasestr_local(m, "maximum context length") ||
+          strcasestr_local(m, "context length") ||
+          strcasestr_local(m, "reduce") ||
+          strcasestr_local(m, "token") ||
+          strcasestr_local(m, "request is too large") ||
+          strcasestr_local(m, "unicode decode error") ||
+          strcasestr_local(m, "invalid unicode") ||
+          strcasestr_local(m, "invalid body")) {
+        yes = true;
+      }
+    }
+  }
+
+  cJSON_Delete(root);
+  return yes;
+}
 
 typedef struct {
   int start;
@@ -845,16 +873,105 @@ static ClipPlanList parse_clip_plan_json(const char *json_text) {
   return out;
 }
 
-/* ----------------------------- OpenAI plan generation (now explicitly uses subtitles + optional script) ----------------------------- */
+static void *xrealloc(void *p, size_t n) {
+  void *q = realloc(p, n);
+  if (!q) die("OOM");
+  return q;
+}
 
-static char *trim_copy(const char *s, size_t max_chars) {
+static char *sanitize_utf8_lossy(const char *in) {
+  if (!in) return strdup("");
+  size_t n = strlen(in);
+  size_t cap = n * 4 + 1;
+  char *out = (char *)malloc(cap);
+  if (!out) die("OOM");
+
+  size_t i = 0, j = 0;
+  while (i < n) {
+    unsigned char c = (unsigned char)in[i];
+
+    if (c < 0x80) {
+      if (j + 2 >= cap) { cap *= 2; out = (char *)xrealloc(out, cap); }
+      out[j++] = (char)c;
+      i++;
+      continue;
+    }
+
+    if (c >= 0xC2 && c <= 0xDF) {
+      if (i + 1 < n) {
+        unsigned char c1 = (unsigned char)in[i + 1];
+        if ((c1 & 0xC0) == 0x80) {
+          if (j + 3 >= cap) { cap *= 2; out = (char *)xrealloc(out, cap); }
+          out[j++] = (char)c;
+          out[j++] = (char)c1;
+          i += 2;
+          continue;
+        }
+      }
+    } else if (c >= 0xE0 && c <= 0xEF) {
+      if (i + 2 < n) {
+        unsigned char c1 = (unsigned char)in[i + 1];
+        unsigned char c2 = (unsigned char)in[i + 2];
+        if (((c1 & 0xC0) == 0x80) && ((c2 & 0xC0) == 0x80)) {
+          if (c == 0xE0 && c1 < 0xA0) goto invalid;
+          if (c == 0xED && c1 >= 0xA0) goto invalid;
+          if (j + 4 >= cap) { cap *= 2; out = (char *)xrealloc(out, cap); }
+          out[j++] = (char)c;
+          out[j++] = (char)c1;
+          out[j++] = (char)c2;
+          i += 3;
+          continue;
+        }
+      }
+    } else if (c >= 0xF0 && c <= 0xF4) {
+      if (i + 3 < n) {
+        unsigned char c1 = (unsigned char)in[i + 1];
+        unsigned char c2 = (unsigned char)in[i + 2];
+        unsigned char c3 = (unsigned char)in[i + 3];
+        if (((c1 & 0xC0) == 0x80) && ((c2 & 0xC0) == 0x80) && ((c3 & 0xC0) == 0x80)) {
+          if (c == 0xF0 && c1 < 0x90) goto invalid;
+          if (c == 0xF4 && c1 > 0x8F) goto invalid;
+          if (j + 5 >= cap) { cap *= 2; out = (char *)xrealloc(out, cap); }
+          out[j++] = (char)c;
+          out[j++] = (char)c1;
+          out[j++] = (char)c2;
+          out[j++] = (char)c3;
+          i += 4;
+          continue;
+        }
+      }
+    }
+
+  invalid:
+    if (j + 3 >= cap) { cap *= 2; out = (char *)xrealloc(out, cap); }
+    if (c < 0xC0) {
+      out[j++] = (char)0xC2;
+      out[j++] = (char)c;
+    } else {
+      out[j++] = (char)0xC3;
+      out[j++] = (char)(c - 0x40);
+    }
+    i++;
+  }
+
+  out[j] = 0;
+  return out;
+}
+
+static char *trim_copy_utf8_safe(const char *s, size_t max_bytes) {
   if (!s) return strdup("");
   size_t n = strlen(s);
-  if (n <= max_chars) return strdup(s);
-  char *out = (char *)malloc(max_chars + 1);
+  if (n <= max_bytes) return strdup(s);
+
+  size_t cut = max_bytes;
+  if (cut >= n) cut = n;
+
+  while (cut > 0 && cut < n && (((unsigned char)s[cut] & 0xC0) == 0x80)) cut--;
+
+  char *out = (char *)malloc(cut + 1);
   if (!out) die("OOM");
-  memcpy(out, s, max_chars);
-  out[max_chars] = 0;
+  memcpy(out, s, cut);
+  out[cut] = 0;
   return out;
 }
 
@@ -862,17 +979,24 @@ static ClipPlanList openai_make_plan(const Config *cfg,
                                      const char *movie_title,
                                      const char *subs_seconds_text,
                                      const char *optional_script_text,
-                                     int num_clips) {
-  /* keep prompts sane */
+                                     int num_clips,
+                                     bool *out_retry_without_script) {
+  if (out_retry_without_script) *out_retry_without_script = false;
+
   const size_t MAX_SUB_CHARS    = 160000;
   const size_t MAX_SCRIPT_CHARS = 40000;
 
-  char *subs_trim = trim_copy(subs_seconds_text, MAX_SUB_CHARS);
-  char *scr_trim  = trim_copy(optional_script_text, MAX_SCRIPT_CHARS);
+  char *title_utf8 = sanitize_utf8_lossy(movie_title ? movie_title : "");
+  char *subs_utf8  = sanitize_utf8_lossy(subs_seconds_text ? subs_seconds_text : "");
+  char *scr_utf8   = sanitize_utf8_lossy(optional_script_text ? optional_script_text : "");
 
-  char prompt[280000];
-  snprintf(
-    prompt, sizeof(prompt),
+  char *subs_trim = trim_copy_utf8_safe(subs_utf8, MAX_SUB_CHARS);
+  char *scr_trim  = trim_copy_utf8_safe(scr_utf8,  MAX_SCRIPT_CHARS);
+
+  free(subs_utf8);
+  free(scr_utf8);
+
+  const char *prompt_fmt =
     "You are given TWO inputs.\n"
     "Movie: %s\n"
     "\n"
@@ -893,14 +1017,15 @@ static ClipPlanList openai_make_plan(const Config *cfg,
     "  {\"clips\":[{\"start\":120,\"end\":145,\"narration\":\"...\"}, ...]}\n"
     "- Clips must be increasing by start time.\n"
     "- Each narration must be at least 3 full sentences, casual commentator vibe.\n"
-    "- The first narration must start with: \"Here we go, let's go over the movie %s.\".\n",
-    movie_title,
-    subs_trim,
-    scr_trim,
-    num_clips,
-    movie_title
-  );
+    "- The first narration must start with: \"Here we go, let's go over the movie %s.\".\n";
 
+  int plen = snprintf(NULL, 0, prompt_fmt, title_utf8, subs_trim, scr_trim, num_clips, title_utf8);
+  if (plen < 0) die("snprintf failed building prompt");
+  char *prompt = (char *)malloc((size_t)plen + 1);
+  if (!prompt) die("OOM");
+  snprintf(prompt, (size_t)plen + 1, prompt_fmt, title_utf8, subs_trim, scr_trim, num_clips, title_utf8);
+
+  free(title_utf8);
   free(subs_trim);
   free(scr_trim);
 
@@ -931,14 +1056,28 @@ static ClipPlanList openai_make_plan(const Config *cfg,
 
   char *body = cJSON_PrintUnformatted(req);
   cJSON_Delete(req);
+  free(prompt);
+
+  if (!body) {
+    ClipPlanList empty = {0};
+    return empty;
+  }
 
   long http_code = 0;
-  MemBuf resp = http_post_json_to_mem("https://api.openai.com/v1/responses", cfg->openai_key, body, &http_code);
+  bool has_script = (optional_script_text && optional_script_text[0] != 0);
+  long timeout_s = has_script ? 14400L : 3600L;
+
+  MemBuf resp = http_post_json_to_mem("https://api.openai.com/v1/responses", cfg->openai_key, body, &http_code, timeout_s);
   free(body);
 
   if (http_code < 200 || http_code >= 300) {
     logw("OpenAI HTTP %ld", http_code);
     if (resp.data && resp.size) logw("OpenAI raw body: %.800s", resp.data);
+
+    if (has_script && resp.data && openai_resp_should_retry_without_script(resp.data)) {
+      if (out_retry_without_script) *out_retry_without_script = true;
+    }
+
     if (resp.data) free(resp.data);
     ClipPlanList empty = {0};
     return empty;
@@ -947,10 +1086,13 @@ static ClipPlanList openai_make_plan(const Config *cfg,
   char *out_text = openai_extract_output_text(resp.data ? resp.data : "");
   if (!out_text) {
     logw("OpenAI response parse failed.");
-    if (resp.data) {
-      logw("OpenAI raw body: %.800s", resp.data);
-      free(resp.data);
+    if (resp.data && resp.size) logw("OpenAI raw body: %.800s", resp.data);
+
+    if (has_script && resp.data && openai_resp_should_retry_without_script(resp.data)) {
+      if (out_retry_without_script) *out_retry_without_script = true;
     }
+
+    if (resp.data) free(resp.data);
     ClipPlanList empty = {0};
     return empty;
   }
@@ -960,8 +1102,6 @@ static ClipPlanList openai_make_plan(const Config *cfg,
   if (resp.data) free(resp.data);
   return plan;
 }
-
-/* ----------------------------- ElevenLabs TTS ----------------------------- */
 
 static bool elevenlabs_tts_to_mp3(const Config *cfg, const char *text, const char *out_mp3_path) {
   char url[1024];
@@ -995,9 +1135,13 @@ static bool elevenlabs_tts_to_mp3(const Config *cfg, const char *text, const cha
   curl_easy_setopt(curl, CURLOPT_URL, url);
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)strlen(body));
   curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, f);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, NULL);
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 300L);
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 
   CURLcode res = curl_easy_perform(curl);
 
@@ -1014,8 +1158,6 @@ static bool elevenlabs_tts_to_mp3(const Config *cfg, const char *text, const cha
   return file_exists(out_mp3_path);
 }
 
-/* ----------------------------- ffmpeg helpers ----------------------------- */
-
 static bool ffmpeg_make_adjusted_clip(const char *input_mp4, int start_s, int end_s,
                                       const char *narration_mp3, double narration_dur,
                                       const char *out_mp4) {
@@ -1025,15 +1167,11 @@ static bool ffmpeg_make_adjusted_clip(const char *input_mp4, int start_s, int en
   int use_start = start_s;
   int use_end   = end_s;
 
-  /* speed factor: >1 means speed-up, <1 means slow-down */
   double speed = orig_seg_dur / narration_dur;
 
-  /* If we'd need too much speed-up, shrink the source window inside [start_s, end_s]
-     so we can stay <= MAX_VIDEO_SPEEDUP while still matching narration duration. */
   if (speed > MAX_VIDEO_SPEEDUP) {
     double desired_src_dur = narration_dur * MAX_VIDEO_SPEEDUP;
 
-    /* keep within original bounds */
     if (desired_src_dur > orig_seg_dur) desired_src_dur = orig_seg_dur;
     if (desired_src_dur < 1.0) desired_src_dur = 1.0;
 
@@ -1043,11 +1181,9 @@ static bool ffmpeg_make_adjusted_clip(const char *input_mp4, int start_s, int en
     double ns = center - half;
     double ne = center + half;
 
-    /* clamp window inside original range */
     if (ns < (double)start_s) { ns = (double)start_s; ne = ns + desired_src_dur; }
     if (ne > (double)end_s)   { ne = (double)end_s;   ns = ne - desired_src_dur; }
 
-    /* final clamp (paranoia) */
     if (ns < (double)start_s) ns = (double)start_s;
     if (ne > (double)end_s)   ne = (double)end_s;
 
@@ -1057,19 +1193,15 @@ static bool ffmpeg_make_adjusted_clip(const char *input_mp4, int start_s, int en
 
     double new_seg_dur = (double)(use_end - use_start);
     speed = new_seg_dur / narration_dur;
-
-    /* rounding can push slightly above; clamp softly */
     if (speed > MAX_VIDEO_SPEEDUP) speed = MAX_VIDEO_SPEEDUP;
 
-    logi("Speed-cap applied: planned %d-%d (%.2fs) vs narr %.2fs => %.2fx. "
-         "Using %d-%d (%.2fs) => %.2fx.",
+    logi("Speed-cap applied: planned %d-%d (%.2fs) vs narr %.2fs => %.2fx. Using %d-%d (%.2fs) => %.2fx.",
          start_s, end_s, orig_seg_dur,
          narration_dur, orig_seg_dur / narration_dur,
          use_start, use_end, (double)(use_end - use_start),
          speed);
   }
 
-  /* Keep existing extreme clamps (mostly for safety) */
   if (speed < 0.05) speed = 0.05;
   if (speed > 20.0) speed = 20.0;
 
@@ -1169,11 +1301,9 @@ static bool ffmpeg_make_vertical(const char *in_mp4, const char *out_mp4) {
   double dur = ffprobe_duration_seconds(in_mp4);
   if (dur <= 0.1) return false;
 
-  /* 9:16 canvas based on original height */
   int out_w = (int)((double)h * 9.0 / 16.0 + 0.5);
   int out_h = h;
 
-  /* even dims for x264 */
   out_w &= ~1;
   out_h &= ~1;
 
@@ -1206,8 +1336,6 @@ static bool ffmpeg_make_vertical(const char *in_mp4, const char *out_mp4) {
   if (rc != 0) { unlink(out_mp4); return false; }
   return file_exists(out_mp4);
 }
-
-/* ----------------------------- filesystem helpers ----------------------------- */
 
 static char **list_files_with_ext(const char *dir, const char *ext1, const char *ext2, size_t *out_n) {
   *out_n = 0;
@@ -1253,13 +1381,10 @@ static void free_str_list(char **lst, size_t n) {
   free(lst);
 }
 
-/* ---- clear clips/ on every run (recursive delete of contents) ---- */
-
 static bool rm_rf_path(const char *path) {
   struct stat st;
   if (lstat(path, &st) != 0) return false;
 
-  /* don't follow symlinks; treat as file */
   if (S_ISLNK(st.st_mode) || S_ISREG(st.st_mode) || S_ISFIFO(st.st_mode) ||
       S_ISSOCK(st.st_mode) || S_ISCHR(st.st_mode) || S_ISBLK(st.st_mode)) {
     return unlink(path) == 0;
@@ -1308,8 +1433,6 @@ static bool clear_directory_contents(const char *dir_path) {
   return ok;
 }
 
-/* ----------------------------- main movie pipeline ----------------------------- */
-
 static bool process_movie(const Config *cfg, const char *movie_path, const char *movie_title,
                           int num_clips) {
   ensure_dir("clips");
@@ -1325,7 +1448,6 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
   snprintf(srt_mod, sizeof(srt_mod), "scripts/srt_files/%s_modified.srt", movie_title);
   snprintf(script_txt, sizeof(script_txt), "scripts/srt_files/%s_summary.txt", movie_title);
 
-  /* ---- SRT ---- */
   if (!file_exists(srt_in)) {
     logi("No SRT found for %s; attempting download...", movie_title);
     if (!download_subtitle_srt(movie_title, srt_in)) {
@@ -1337,7 +1459,6 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
     logok("Found SRT: %s", srt_in);
   }
 
-  /* ---- Convert SRT -> seconds ---- */
   if (!file_exists(srt_mod)) {
     logi("Converting SRT timestamps -> seconds: %s -> %s", srt_in, srt_mod);
     if (!convert_srt_timestamps_to_seconds(srt_in, srt_mod)) {
@@ -1349,7 +1470,6 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
     logok("Using cached converted subtitles: %s", srt_mod);
   }
 
-  /* ---- IMSDb script (optional context) ---- */
   long sz = file_size_bytes(script_txt);
   if (sz >= 0 && sz < 200) {
     logw("IMSDb script file looks too small (%ld bytes). Deleting to retry: %s", sz, script_txt);
@@ -1368,7 +1488,6 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
     }
   }
 
-  /* ---- Read subtitles (required) ---- */
   char *subs_seconds = read_entire_file(srt_mod);
   if (!subs_seconds) {
     logw("Failed to read converted subtitles for %s: %s", movie_title, srt_mod);
@@ -1376,7 +1495,6 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
   }
   logok("Loaded subtitles for planning: %s (%zu bytes)", srt_mod, strlen(subs_seconds));
 
-  /* ---- Read script (optional) ---- */
   char *imsdb_script = NULL;
   if (file_exists(script_txt)) {
     imsdb_script = read_entire_file(script_txt);
@@ -1390,9 +1508,15 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
     logi("No IMSDb script available; using subtitles only.");
   }
 
-  /* ---- OpenAI plan ---- */
   logi("Requesting OpenAI clip plan (%d clips target)...", num_clips);
-  ClipPlanList plan = openai_make_plan(cfg, movie_title, subs_seconds, imsdb_script ? imsdb_script : "", num_clips);
+  bool retry_no_script = false;
+  ClipPlanList plan = openai_make_plan(cfg, movie_title, subs_seconds, imsdb_script ? imsdb_script : "", num_clips, &retry_no_script);
+
+  if (plan.count == 0 && retry_no_script && imsdb_script && imsdb_script[0]) {
+    logw("OpenAI request failed with IMSDb context; retrying without IMSDb script for %s", movie_title);
+    plan = openai_make_plan(cfg, movie_title, subs_seconds, "", num_clips, NULL);
+  }
+
   free(subs_seconds);
   if (imsdb_script) free(imsdb_script);
 
@@ -1403,7 +1527,6 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
   }
   logok("OpenAI plan received: %zu clips", plan.count);
 
-  /* ---- Build clips ---- */
   char concat_list_path[PATH_MAX];
   snprintf(concat_list_path, sizeof(concat_list_path), "clips/%s_concat_list.txt", movie_title);
 
@@ -1462,7 +1585,6 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
   }
   logok("Clips produced: %zu (concat list: %s)", made, concat_list_path);
 
-  /* ---- Concat ---- */
   char tmp_concat[PATH_MAX];
   snprintf(tmp_concat, sizeof(tmp_concat), "clips/%s_concat_tmp.mp4", movie_title);
 
@@ -1480,7 +1602,6 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
   }
   logok("Final duration: %.2f seconds", final_dur);
 
-  /* ---- Background music ---- */
   size_t song_n = 0;
   char **songs = list_files_with_ext("backgroundmusic", ".mp3", ".m4a", &song_n);
   if (!songs || song_n == 0) {
@@ -1559,7 +1680,6 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
     free_str_list(songs, song_n);
   }
 
-  /* ---- Vertical render ---- */
   char out_final[PATH_MAX], out_vert[PATH_MAX];
   snprintf(out_final, sizeof(out_final), "output/%s.mp4", movie_title);
   snprintf(out_vert, sizeof(out_vert), "tiktok_output/%s_vertical.mp4", movie_title);
@@ -1571,7 +1691,6 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
     logok("Vertical render OK: %s", out_vert);
   }
 
-  /* ---- Retire movie ---- */
   char retired[PATH_MAX];
   snprintf(retired, sizeof(retired), "movies_retired/%s.mp4", movie_title);
   rename(movie_path, retired);
@@ -1607,7 +1726,6 @@ int main(void) {
   ensure_dir("tiktok_output");
   ensure_dir("movies_retired");
 
-  /* Clear clips/ every run (including clips/audio and any temp files) */
   logi("Clearing clips/ folder...");
   if (!clear_directory_contents("clips")) {
     logw("Failed to fully clear clips/ (continuing anyway).");
@@ -1615,7 +1733,6 @@ int main(void) {
     logok("Cleared clips/ folder.");
   }
 
-  /* Recreate required clip subdirs after clearing */
   ensure_dir("clips");
   ensure_dir("clips/audio");
 
