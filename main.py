@@ -48,9 +48,15 @@ MIN_TOTAL_DURATION = 2.5 * 60
 MAX_TOTAL_DURATION = 4.5 * 60
 
 def load_config(file_path):
-    with open(file_path, 'r') as file:
-        config = json.load(file)
-    return config
+    if os.path.isfile(file_path):
+        
+        with open(file_path, 'r') as file:
+            config = json.load(file)
+        return config
+    
+    else:
+        print("Create a config.json configuration file.")
+        sys.exit()
 
 config = load_config('config.json')
 open_api_key = config.get('open_api_key')
@@ -524,7 +530,7 @@ class Gui:
 
             if background_music.duration < final_clip.duration:
                 difference = final_clip.duration - background_music.duration
-                song_to_append = Gui.select_random_song().subclip(0, difference)
+                song_to_appendqw = Gui.select_random_song().subclip(0, difference)
                 background_music = concatenate_audioclips([background_music, song_to_append])
 
             background_music = background_music.volumex(0.1)
@@ -881,7 +887,7 @@ class Gui:
         try:
             prompt = script
             response = client.responses.create(
-                model="gpt-5-mini",
+                model="gpt-5.2",
                 reasoning={"effort": "high"},
                 input=[{"role": "user", "content": prompt}]
             )
