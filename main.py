@@ -530,7 +530,7 @@ class Gui:
 
             if background_music.duration < final_clip.duration:
                 difference = final_clip.duration - background_music.duration
-                song_to_appendqw = Gui.select_random_song().subclip(0, difference)
+                song_to_append = Gui.select_random_song().subclip(0, difference)
                 background_music = concatenate_audioclips([background_music, song_to_append])
 
             background_music = background_music.volumex(0.1)
