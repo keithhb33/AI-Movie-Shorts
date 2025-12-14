@@ -434,6 +434,91 @@ static bool str_ends_with(const char *s, const char *suffix) {
   return strcmp(s + (ls - lf), suffix) == 0;
 }
 
+/* ----------------------- NEW HELPERS (IMSDb robustness) ----------------------- */
+
+static void to_lower_copy(const char *in, char *out, size_t outsz) {
+  size_t j = 0;
+  for (size_t i = 0; in[i] && j + 1 < outsz; i++) {
+    out[j++] = (char)tolower((unsigned char)in[i]);
+  }
+  out[j] = 0;
+}
+
+/* Percent-encode a path component (spaces -> %20, etc.) */
+static void url_encode_component(const char *in, char *out, size_t outsz) {
+  size_t j = 0;
+  for (size_t i = 0; in[i] && j + 1 < outsz; i++) {
+    unsigned char c = (unsigned char)in[i];
+    if (isalnum(c) || c == '-' || c == '_' || c == '.') {
+      out[j++] = (char)c;
+    } else if (c == ' ') {
+      if (j + 3 >= outsz) break;
+      out[j++] = '%'; out[j++] = '2'; out[j++] = '0';
+    } else {
+      if (j + 3 >= outsz) break;
+      static const char *hex = "0123456789ABCDEF";
+      out[j++] = '%';
+      out[j++] = hex[(c >> 4) & 0xF];
+      out[j++] = hex[c & 0xF];
+    }
+  }
+  out[j] = 0;
+}
+
+/* Tiny string builder */
+static void sb_append(char **buf, size_t *len, size_t *cap, const char *s, size_t n) {
+  if (*len + n + 1 > *cap) {
+    *cap = (*cap == 0) ? 8192 : (*cap * 2);
+    while (*len + n + 1 > *cap) *cap *= 2;
+    *buf = (char *)realloc(*buf, *cap);
+    if (!*buf) die("OOM");
+  }
+  memcpy(*buf + *len, s, n);
+  *len += n;
+  (*buf)[*len] = 0;
+}
+
+/* Very simple HTML->text: strips tags, preserves <br> as newline, decodes a few entities */
+static char *html_to_text_basic(const char *html, size_t n, size_t *out_n) {
+  char *out = NULL;
+  size_t len = 0, cap = 0;
+
+  for (size_t i = 0; i < n;) {
+    if (html[i] == '<') {
+      /* handle <br> variants */
+      size_t j = i + 1;
+      while (j < n && isspace((unsigned char)html[j])) j++;
+      if (j + 1 < n &&
+          tolower((unsigned char)html[j]) == 'b' &&
+          tolower((unsigned char)html[j + 1]) == 'r') {
+        sb_append(&out, &len, &cap, "\n", 1);
+      }
+      /* skip tag */
+      while (i < n && html[i] != '>') i++;
+      if (i < n) i++;
+      continue;
+    }
+
+    if (html[i] == '&') {
+      const char *p = html + i;
+      if (i + 6 <= n && !strncmp(p, "&nbsp;", 6)) { sb_append(&out, &len, &cap, " ", 1); i += 6; continue; }
+      if (i + 5 <= n && !strncmp(p, "&amp;", 5))  { sb_append(&out, &len, &cap, "&", 1); i += 5; continue; }
+      if (i + 4 <= n && !strncmp(p, "&lt;", 4))   { sb_append(&out, &len, &cap, "<", 1); i += 4; continue; }
+      if (i + 4 <= n && !strncmp(p, "&gt;", 4))   { sb_append(&out, &len, &cap, ">", 1); i += 4; continue; }
+      /* otherwise fall through */
+    }
+
+    sb_append(&out, &len, &cap, &html[i], 1);
+    i++;
+  }
+
+  if (!out) out = strdup("");
+  if (out_n) *out_n = len;
+  return out;
+}
+
+/* ----------------------- Subtitle downloader (unchanged) ---------------------- */
+
 static void parse_movie_title_slug(const char *movie_title, char *out, size_t outsz) {
   size_t j = 0;
   for (size_t i = 0; movie_title[i] && j + 1 < outsz; i++) {
@@ -599,6 +684,8 @@ static bool download_subtitle_srt(const char *movie_title, const char *dest_srt_
   return (rc == 0) && file_exists(dest_srt_path);
 }
 
+/* ----------------------- IMSDb scraper (UPDATED) ----------------------- */
+
 static void strip_parens(const char *in, char *out, size_t outsz) {
   size_t j = 0;
   for (size_t i = 0; in[i] && j + 1 < outsz; i++) {
@@ -622,8 +709,9 @@ static void imsdb_format_title_loose(const char *movie_title, char *out, size_t 
   out[j] = 0;
 }
 
-static bool imsdb_fetch_pre_to_file(const char *url, const char *dest_txt_path,
-                                   char *why, size_t whysz) {
+/* NEW: Extract script from either <pre>...</pre> OR class="scrtext" region */
+static bool imsdb_fetch_script_to_file(const char *url, const char *dest_txt_path,
+                                       char *why, size_t whysz) {
   if (why && whysz) { why[0] = 0; }
 
   long code = 0;
@@ -635,36 +723,58 @@ static bool imsdb_fetch_pre_to_file(const char *url, const char *dest_txt_path,
     return false;
   }
 
+  const char *start = NULL;
+  const char *end   = NULL;
+
+  /* 1) Prefer <pre> */
   char *pre = strcasestr_local(page.data, "<pre");
-  if (!pre) {
-    if (why && whysz) snprintf(why, whysz, "<pre> not found");
+  if (pre) {
+    pre = strchr(pre, '>');
+    if (pre) {
+      pre++;
+      char *pend = strcasestr_local(pre, "</pre>");
+      if (pend) { start = pre; end = pend; }
+    }
+  }
+
+  /* 2) Fallback: class="scrtext" */
+  if (!start || !end) {
+    char *scr = strcasestr_local(page.data, "class=\"scrtext\"");
+    if (!scr) scr = strcasestr_local(page.data, "class='scrtext'");
+    if (scr) {
+      char *gt = strchr(scr, '>');
+      if (gt) {
+        gt++;
+        char *tdend  = strcasestr_local(gt, "</td>");
+        char *divend = strcasestr_local(gt, "</div>");
+        char *best = NULL;
+        if (tdend && divend) best = (tdend < divend) ? tdend : divend;
+        else best = tdend ? tdend : divend;
+        if (best) { start = gt; end = best; }
+      }
+    }
+  }
+
+  if (!start || !end || end <= start) {
+    if (why && whysz) snprintf(why, whysz, "script block not found");
     free(page.data);
     return false;
   }
 
-  pre = strchr(pre, '>');
-  if (!pre) {
-    if (why && whysz) snprintf(why, whysz, "malformed <pre>");
-    free(page.data);
-    return false;
-  }
-  pre += 1;
+  size_t raw_n = (size_t)(end - start);
+  size_t txt_n = 0;
+  char *txt = html_to_text_basic(start, raw_n, &txt_n);
 
-  char *end = strcasestr_local(pre, "</pre>");
-  if (!end) {
-    if (why && whysz) snprintf(why, whysz, "</pre> not found");
-    free(page.data);
-    return false;
-  }
-
-  size_t n = (size_t)(end - pre);
-  if (n < 10) {
-    if (why && whysz) snprintf(why, whysz, "<pre> content too small (%zu bytes)", n);
+  /* sanity check */
+  if (txt_n < 1000) {
+    if (why && whysz) snprintf(why, whysz, "extracted text too small (%zu)", txt_n);
+    free(txt);
     free(page.data);
     return false;
   }
 
-  bool ok = write_entire_file(dest_txt_path, pre, n);
+  bool ok = write_entire_file(dest_txt_path, txt, txt_n);
+  free(txt);
   free(page.data);
 
   if (!ok) {
@@ -675,6 +785,7 @@ static bool imsdb_fetch_pre_to_file(const char *url, const char *dest_txt_path,
   return true;
 }
 
+/* UPDATED: Try multiple URL families, including Movie%20Scripts/<Title>%20Script.html */
 static bool download_imsdb_script_ex(const char *movie_title,
                                     const char *dest_txt_path,
                                     char *used_url, size_t used_url_sz) {
@@ -683,6 +794,7 @@ static bool download_imsdb_script_ex(const char *movie_title,
 
   if (used_url && used_url_sz) used_url[0] = 0;
 
+  /* Existing variants (hyphens, strip parens, loose format) */
   char a[512] = {0};
   char b[512] = {0};
   char c[512] = {0};
@@ -700,28 +812,47 @@ static bool download_imsdb_script_ex(const char *movie_title,
   strip_parens(a, b, sizeof(b));
   imsdb_format_title_loose(movie_title, c, sizeof(c));
 
-  const char *variants[4] = { a, b, c, NULL };
+  char a_lo[512]; to_lower_copy(a, a_lo, sizeof(a_lo));
+  char b_lo[512]; to_lower_copy(b, b_lo, sizeof(b_lo));
+  char c_lo[512]; to_lower_copy(c, c_lo, sizeof(c_lo));
 
-  for (int i = 0; variants[i]; i++) {
-    if (variants[i][0] == 0) continue;
+  /* Movie Scripts URL uses %20 spaces and ends with " Script.html" */
+  char enc_title[1024];
+  url_encode_component(movie_title, enc_title, sizeof(enc_title));
 
-    char url[1024];
-    snprintf(url, sizeof(url), "https://imsdb.com/scripts/%s.html", variants[i]);
+  /* Build attempt URLs */
+  char url0[1024], url1[1024], url2[1024], url3[1024], url4[1024], url5[1024], url6[1024];
+
+  snprintf(url0, sizeof(url0), "https://imsdb.com/scripts/%s.html", a);
+  snprintf(url1, sizeof(url1), "https://imsdb.com/scripts/%s.html", b);
+  snprintf(url2, sizeof(url2), "https://imsdb.com/scripts/%s.html", c);
+
+  snprintf(url3, sizeof(url3), "https://imsdb.com/scripts/%s.html", a_lo);
+  snprintf(url4, sizeof(url4), "https://imsdb.com/scripts/%s.html", b_lo);
+  snprintf(url5, sizeof(url5), "https://imsdb.com/scripts/%s.html", c_lo);
+
+  snprintf(url6, sizeof(url6), "https://imsdb.com/Movie%%20Scripts/%s%%20Script.html", enc_title);
+
+  const char *attempts[] = { url0, url1, url2, url3, url4, url5, url6, NULL };
+
+  for (int i = 0; attempts[i]; i++) {
+    if (!attempts[i][0]) continue;
 
     char why[256];
-    if (imsdb_fetch_pre_to_file(url, dest_txt_path, why, sizeof(why))) {
+    if (imsdb_fetch_script_to_file(attempts[i], dest_txt_path, why, sizeof(why))) {
       if (used_url && used_url_sz) {
-        strncpy(used_url, url, used_url_sz - 1);
+        strncpy(used_url, attempts[i], used_url_sz - 1);
         used_url[used_url_sz - 1] = 0;
       }
       return true;
     }
-
-    logw("IMSDb attempt failed (%s): %s", why, url);
+    logw("IMSDb attempt failed (%s): %s", why, attempts[i]);
   }
 
   return false;
 }
+
+/* ----------------------- OpenAI response parsing (unchanged) ----------------------- */
 
 static char *openai_extract_output_text(const char *resp_json) {
   cJSON *root = cJSON_Parse(resp_json);
