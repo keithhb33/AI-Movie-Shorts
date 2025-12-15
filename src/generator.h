@@ -1,4 +1,3 @@
-// src/generator.h
 #pragma once
 
 #ifdef __cplusplus

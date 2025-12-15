@@ -1,4 +1,3 @@
-// src/main.c
 #include "raylib.h"
 #include "generator.h"
 

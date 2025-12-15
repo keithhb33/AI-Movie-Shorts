@@ -1,23 +1,3 @@
-/*
-  generator.c  (CORE GENERATOR ONLY)
-
-  This file contains ONLY your generation pipeline (no GUI).
-  It is designed for the new layout:
-
-    src/generator.c
-    src/generator.h
-    src/main.c   (raylib UI)
-
-  Changes made vs your current file:
-    - Removed ALL IUP GUI code + worker threads + ui_run.log tailing
-    - Removed dependency on dirent_port.h
-    - Added generator_set_log_hook() + log forwarding to the UI
-    - Exposed run_generation() (replaces generator_run / main / run_generation_once)
-    - Switched cJSON include to <cJSON.h> (works with FetchContent cJSON target)
-
-  NOTE: This file still uses system() to call ffmpeg/ffprobe/unzip.
-*/
-
 #define _POSIX_C_SOURCE 200809L
 
 #include <ctype.h>
