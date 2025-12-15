@@ -1,77 +1,207 @@
 # AI-Movie-Shorts
-Turn full movies or .MP4 Files into AI-generated movie trailers and summaries using OpenAI.
+
+Turn full-length `.mp4` movies into **AI-narrated movie recap videos** (horizontal + vertical), built automatically from subtitles + optional script context.
 
 Example Video: [Citizen Kane (1941)](https://www.youtube.com/watch?v=ej8c0NwKW00&t=5s)
 
-<h3>Basic Installation Steps</h3>
+![UI Screenshot](resources/ui.png)
 
-```python
-#This repository only works on Windows PCs
-#Clone the Git repository:
-git clone https://github.com/keithhb33/AI-Movie-Shorts.git
+---
 
-#Navigate to the cloned repo:
-cd AI-Movie-Shorts
+## What it does
 
-#Install modules and dependencies within the cloned "AI-Movie-Shorts" directory:
-python3 -m pip install -r requirements.txt
+Given a movie file, AI-Movie-Shorts will:
 
-#Remove .placeholder files (Windows PowerShell Terminal Command):
-Get-ChildItem -Recurse -Filter ".placeholder" | Remove-Item
+1. **Fetch subtitles (SRT)** automatically (and convert timestamps to seconds)
+2. **Optionally fetch a script** (used only as extra story context)
+3. Ask **OpenAI** to generate a **clip plan** (timestamps + narration per clip)
+4. Use **ElevenLabs** to generate voiceover audio for each clip
+5. Use **FFmpeg** to:
+   - cut each clip
+   - time-stretch video to match narration length
+   - concatenate all clips into one recap video
+6. Optionally add **background music** from `backgroundmusic/`
+7. Export:
+   - `output/<MovieTitle>.mp4` (standard)
+   - `tiktok_output/<MovieTitle>_vertical.mp4` (9:16 vertical)
 
+It also **clears generated files in `clips/` each run** (while preserving the `clips/audio/` folder and only removing files inside it).
+
+---
+
+## UI (raylib)
+
+The app includes a simple **desktop UI window** (raylib) that lets you:
+
+- Open key folders with one click:
+  - `movies/`
+  - `movies_retired/` (optional)
+  - `output/`
+  - `scripts/srt_files/` (subtitles/scripts cache)
+- Start generation with a **START GENERATION** button
+- View generation output in an in-app **log panel** (in addition to terminal output)
+- The window is **resizable**
+
+### UI font
+The UI uses **Inter Regular** from:
+
+- `resources/Inter-Regular.ttf`
+
+Make sure that file exists, and that you run the program with the working directory set so `resources/` is resolvable (running from the project root is the easiest).
+
+---
+
+## Folder structure
+
+- `movies/` — input `.mp4` files (filename should be the movie title)
+- `movies_retired/` — optional storage for movies you don’t want in the active input folder
+- `output/` — final horizontal recap videos
+- `tiktok_output/` — final vertical recap videos
+- `backgroundmusic/` — optional `.mp3` / `.m4a` music used as BGM
+- `clips/` — temporary working files (auto-cleared each run)
+  - `clips/audio/` — generated narration MP3s (files cleared each run; folder preserved)
+- `scripts/srt_files/` — downloaded/cached subtitles and optional scripts
+- `resources/`
+  - `Inter-Regular.ttf` — UI font
+  - `ui.png` — UI screenshot (for README)
+
+---
+
+## Requirements
+
+You need:
+
+- **FFmpeg + ffprobe**
+- **curl**
+- **unzip** (for subtitle downloads)
+- A C toolchain + build system:
+  - macOS/Linux: `cmake`, `make` (or Ninja), `pkg-config`
+- Libraries:
+  - `libcurl`
+  - `cJSON`
+  - **raylib** (for the UI)
+
+### macOS (Homebrew) quick install
+```bash
+brew install ffmpeg curl cjson cmake pkg-config unzip
 ```
 
-<h3>OpenAI API Setup & Configuration</h3>
-Due to OpenAI's API usage rate costs, users must configure their own GPT 4o API keys.
-<br />
-Key acquisition guide <a href="https://www.howtogeek.com/885918/how-to-get-an-openai-api-key/#:~:text=Go%20to%20OpenAI's%20Platform%20website,generate%20a%20new%20API%20key">here.</a>
-<br />
-<br />
-Once acquired, edit the config.json file:
-<br />
+### Linux (example)
+Install equivalents via your package manager (names vary by distro):
+- `ffmpeg`
+- `curl` + dev headers
+- `cmake`, `pkg-config`, build essentials
+- `cjson` dev package
+- `unzip`
+- `raylib` (dev package) if your build expects a system install
 
-```python
-# Replace with OpenAI and ElevenLabs API keys ('legacy' user OpenAI API keys are utilized here).
-# IMPORTANT: OpenAI TIER 2 API ACCOUNT IS REQUIRED DUE TO CHARACTER LIMITS ON LEVEL 1.
-config.json
+> Note: How raylib is provided depends on your CMake setup (system package vs FetchContent/submodule). If your build already works, you’re good.
+
+---
+
+## Config
+
+Create `config.json` in the project root:
+
+```json
+{
+  "open_api_key": "YOUR_OPENAI_KEY",
+  "elevenlabs_api_key": "YOUR_ELEVENLABS_KEY",
+  "eleven_voice_id": "OPTIONAL_VOICE_ID",
+  "eleven_model_id": "OPTIONAL_MODEL_ID"
+}
 ```
 
-<h3>Usage</h3>
-After configuration:
+Notes:
+- `eleven_voice_id` defaults if omitted.
+- `eleven_model_id` defaults if omitted.
 
-```python
-#Run the terminal command in the "AI-Movie-Shorts" directory:
-python3 main.py
+---
+
+## Build
+
+```bash
+rm -rf build
+cmake -S . -B build
+cmake --build build
 ```
 
-An application GUI should appear.
+This produces the executable (name depends on your CMake target, e.g. `movie_summary_bot`).
 
-<p align="center">
-  <img src="https://github.com/keithhb33/AI-Movie-Shorts/assets/51885619/0c136488-f3d7-4b94-a49e-32af9a861ef8" alt="GUI Image"/>
-</p>
+---
 
-Place .MP4 (movie) files into the "movies" directory.
-Ensure all filenames are the titles of their respective movies (Ex: "American Psycho.mp4")
+## Usage
 
-Click "Start Generation"
+1. Put movie files in `movies/`:
+   - Example: `movies/Sinners.mp4`
 
-If the algorithm cannot find a particular movie script, it will ask for you to place it in scripts/srt_files/{movie_title}_summary.txt.
-Find the movie script online and paste it into this file. Then rerun "Start Generation."
+2. Run the program (example binary name):
+   ```bash
+   ./build/movie_summary_bot
+   ```
 
-For non-public movies, the algorithm may have trouble finding an SRT file for the movie. If this error occurs, find an SRT file
-for your movie/video and place it in scripts/srt_files/{movie_title}.srt
+3. In the UI:
+   - Use the folder buttons to open `movies/`, `output/`, `scripts/srt_files/`, etc.
+   - Click **START GENERATION** to run.
+   - Watch progress in the in-app **Log** panel (and/or terminal).
 
-After all narrations are complete, the GUI will indicate such. Processed movie shorts can be viewed in the "output" directory.
-Here is an example movie short: [Watch Short](https://youtu.be/TBBme4gQ9G8)
+Outputs:
+- `output/Sinners.mp4`
+- `tiktok_output/Sinners_vertical.mp4`
 
+---
 
-<h3>(Optional) YouTube API Setup & Configuration</h3>
+## Background music behavior
 
-Users must configure the YouTube API to access their particular YouTube channel. This configuration is optional if users only wish to generate MP4 files.
+If `backgroundmusic/` contains `.mp3` or `.m4a` files, the program will:
+- randomly choose tracks,
+- trim from ~40s in (to skip intros),
+- stitch enough pieces to cover the recap duration,
+- mix narration louder + BGM quieter.
 
-Follow the steps <a href="https://developers.google.com/youtube/v3/guides/uploading_a_video">here</a> only under the "Requirements" heading. Configure your YouTube API <a href="https://console.cloud.google.com/apis/dashboard">here</a>. Once the YouTube Data API web application has been configured, paste the correct "client_id" and "client_secret" into 
-a client_secrets.json file.
+If no music files exist, output will be narration-only.
 
-After clicking "Upload All to Youtube" on the GUI, users should be asked to sign in to the Google account associated with their YouTube channel, and all of the outputted .MP4 files in the "output" directory will upload to YouTube.
+---
 
-Unfortunately, as of 2020 July, only audited and approved user-created YouTube APIs can be used to upload public videos to the platform. Using non-audited APIs to upload videos to YouTube results in the videos being locked as private. The audit application can be found <a href="https://support.google.com/youtube/contact/yt_api_form?hl=en">here</a>. The process usually only takes a few days.
+## Subtitles / script fetching
+
+- Subtitles (SRT) are auto-downloaded when missing.
+- Script fetching is **best effort** and **optional**. If it fails, the program continues with subtitles only.
+
+If auto-fetch fails, you can manually add:
+- `scripts/srt_files/<MovieTitle>.srt`
+
+Then rerun.
+
+---
+
+## Vertical output
+
+The vertical render:
+- center-crops the movie to a narrower width,
+- scales/pads to a 9:16 canvas,
+- keeps audio if present.
+
+Saved to `tiktok_output/`.
+
+---
+
+## Notes & troubleshooting
+
+- **Filename matters**: `movies/My Movie.mp4` → treated as title `My Movie`
+- If you see “plan count = 0” or missing clips, check:
+  - your OpenAI key
+  - network connectivity
+  - that the SRT conversion output is not empty
+- If the UI font looks wrong or you see missing-text issues:
+  - confirm `resources/Inter-Regular.ttf` exists
+  - run the binary from the project root so `resources/` resolves
+- If vertical render fails, confirm:
+  - FFmpeg is installed and in PATH
+  - the input `output/<MovieTitle>.mp4` exists and is valid
+
+---
+
+## Legal
+
+Only process videos you own or have permission to use. Subtitle/script sources may be unavailable for some titles, and availability can change over time.

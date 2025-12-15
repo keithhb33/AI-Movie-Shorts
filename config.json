@@ -1,5 +1,6 @@
 {
-    "open_api_key": "OPENAPIKEY",
-    "elevenlabs_api_key": "ELEVENLABSAPIKEY"
+  "open_api_key": "OpenAIAPI",
+  "elevenlabs_api_key": "ElevenLabsAPI",
+  "eleven_voice_id": "JBFqnCBsd6RMkjVDRZzb",
+  "eleven_model_id": "eleven_multilingual_v2"
 }
-  
