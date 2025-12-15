@@ -1,6 +1,26 @@
+/*
+  generator.c  (CORE GENERATOR ONLY)
+
+  This file contains ONLY your generation pipeline (no GUI).
+  It is designed for the new layout:
+
+    src/generator.c
+    src/generator.h
+    src/main.c   (raylib UI)
+
+  Changes made vs your current file:
+    - Removed ALL IUP GUI code + worker threads + ui_run.log tailing
+    - Removed dependency on dirent_port.h
+    - Added generator_set_log_hook() + log forwarding to the UI
+    - Exposed run_generation() (replaces generator_run / main / run_generation_once)
+    - Switched cJSON include to <cJSON.h> (works with FetchContent cJSON target)
+
+  NOTE: This file still uses system() to call ffmpeg/ffprobe/unzip.
+*/
+
 #define _POSIX_C_SOURCE 200809L
+
 #include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
 #include <math.h>
 #include <stdarg.h>
@@ -8,16 +28,43 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/stat.h>
 #include <time.h>
-#include <unistd.h>
+
+#if defined(_WIN32)
+  #include <windows.h>
+  #include <direct.h>
+  #include <io.h>
+
+  #ifndef __MINGW32__
+    #define strcasecmp  _stricmp
+    #define strncasecmp _strnicmp
+  #endif
+
+  #define popen  _popen
+  #define pclose _pclose
+  #define unlink _unlink
+  #define lstat  stat
+
+  #ifndef strdup
+    #define strdup _strdup
+  #endif
+
+  static int mkdir_portable(const char *p, int mode) { (void)mode; return _mkdir(p); }
+  #define mkdir(p,m) mkdir_portable((p),(m))
+#else
+  #include <strings.h>
+  #include <unistd.h>
+  #include <dirent.h>
+#endif
 
 #include <curl/curl.h>
-#include <cjson/cJSON.h>
+#include "cJSON.h"
+
+#include "generator.h"
 
 #ifdef PATH_MAX
-    #undef PATH_MAX
+  #undef PATH_MAX
 #endif
 #define PATH_MAX 4096
 
@@ -34,20 +81,91 @@ typedef struct {
   size_t size;
 } MemBuf;
 
+/* ------------------------ Windows dirent fallback (MSVC) ------------------------ */
+#if defined(_WIN32) && !defined(__MINGW32__) && !defined(__MINGW64__)
+  #ifndef MAX_PATH
+    #define MAX_PATH 260
+  #endif
+
+  struct dirent { char d_name[MAX_PATH]; };
+
+  typedef struct DIR_ {
+    HANDLE h;
+    WIN32_FIND_DATAA f;
+    struct dirent e;
+    int first;
+    char pattern[MAX_PATH];
+  } DIR;
+
+  static DIR *opendir(const char *name) {
+    if (!name || !name[0]) return NULL;
+    DIR *d = (DIR *)calloc(1, sizeof(DIR));
+    if (!d) return NULL;
+
+    snprintf(d->pattern, sizeof(d->pattern), "%s\\*", name);
+    d->h = FindFirstFileA(d->pattern, &d->f);
+    if (d->h == INVALID_HANDLE_VALUE) {
+      free(d);
+      return NULL;
+    }
+    d->first = 1;
+    return d;
+  }
+
+  static struct dirent *readdir(DIR *d) {
+    if (!d) return NULL;
+
+    for (;;) {
+      if (d->first) {
+        d->first = 0;
+      } else {
+        if (!FindNextFileA(d->h, &d->f)) return NULL;
+      }
+
+      strncpy(d->e.d_name, d->f.cFileName, sizeof(d->e.d_name) - 1);
+      d->e.d_name[sizeof(d->e.d_name) - 1] = 0;
+      return &d->e;
+    }
+  }
+
+  static int closedir(DIR *d) {
+    if (!d) return -1;
+    if (d->h && d->h != INVALID_HANDLE_VALUE) FindClose(d->h);
+    free(d);
+    return 0;
+  }
+#endif
+
+/* ------------------------ Log hook plumbing (for UI) ------------------------ */
+static GeneratorLogHook g_log_hook = NULL;
+
+void generator_set_log_hook(GeneratorLogHook hook) {
+  g_log_hook = hook;
+}
+
 static void logv(const char *tag, const char *fmt, va_list ap) {
-  fprintf(stderr, "[%s] ", tag);
-  vfprintf(stderr, fmt, ap);
-  fputc('\n', stderr);
+  char msg[2048];
+
+  va_list ap2;
+  va_copy(ap2, ap);
+  vsnprintf(msg, sizeof(msg), fmt, ap2);
+  va_end(ap2);
+
+  fprintf(stderr, "[%s] %s\n", tag, msg);
+
+  if (g_log_hook) {
+    char line[2200];
+    snprintf(line, sizeof(line), "[%s] %s", tag, msg);
+    g_log_hook(line);
+  }
 }
 
 static void logi(const char *fmt, ...) {
   va_list ap; va_start(ap, fmt); logv("INFO", fmt, ap); va_end(ap);
 }
-
 static void logok(const char *fmt, ...) {
   va_list ap; va_start(ap, fmt); logv("OK", fmt, ap); va_end(ap);
 }
-
 static void logw(const char *fmt, ...) {
   va_list ap; va_start(ap, fmt); logv("WARN", fmt, ap); va_end(ap);
 }
@@ -163,7 +281,8 @@ static MemBuf http_get_to_mem_ex(const char *url, long *http_code_out) {
   return buf;
 }
 
-static MemBuf http_post_json_to_mem(const char *url, const char *bearer_key, const char *json_body, long *http_code_out, long timeout_s) {
+static MemBuf http_post_json_to_mem(const char *url, const char *bearer_key, const char *json_body,
+                                   long *http_code_out, long timeout_s) {
   CURL *curl = curl_easy_init();
   if (!curl) die("curl init failed");
 
@@ -210,8 +329,31 @@ static MemBuf http_post_json_to_mem(const char *url, const char *bearer_key, con
   return buf;
 }
 
+/* Cross-platform "shell escape" for file paths in system() commands */
 static char *sh_escape(const char *s) {
   size_t n = strlen(s);
+#ifdef _WIN32
+  /* use "..." for cmd.exe */
+  size_t cap = n * 2 + 3;
+  char *out = (char *)malloc(cap);
+  if (!out) die("OOM");
+  size_t j = 0;
+  out[j++] = '"';
+  for (size_t i = 0; i < n; i++) {
+    if (s[i] == '"') {
+      if (j + 2 >= cap) { cap *= 2; out = (char *)realloc(out, cap); if (!out) die("OOM"); }
+      out[j++] = '"';
+      out[j++] = '"';
+    } else {
+      if (j + 2 >= cap) { cap *= 2; out = (char *)realloc(out, cap); if (!out) die("OOM"); }
+      out[j++] = s[i];
+    }
+  }
+  out[j++] = '"';
+  out[j] = 0;
+  return out;
+#else
+  /* POSIX single-quote escaping */
   size_t cap = n * 4 + 3;
   char *out = (char *)malloc(cap);
   if (!out) die("OOM");
@@ -228,6 +370,7 @@ static char *sh_escape(const char *s) {
   out[j++] = '\'';
   out[j] = 0;
   return out;
+#endif
 }
 
 static int run_cmd(const char *fmt, ...) {
@@ -238,8 +381,8 @@ static int run_cmd(const char *fmt, ...) {
   va_end(ap);
 
   fprintf(stderr, "[cmd] %s\n", cmd);
-  int rc = system(cmd);
-  return rc;
+  if (g_log_hook) g_log_hook(cmd);
+  return system(cmd);
 }
 
 static char *popen_read_all(const char *cmd) {
@@ -485,7 +628,6 @@ static char *html_to_text_basic(const char *html, size_t n, size_t *out_n) {
 
   for (size_t i = 0; i < n;) {
     if (html[i] == '<') {
-      /* handle <br> variants */
       size_t j = i + 1;
       while (j < n && isspace((unsigned char)html[j])) j++;
       if (j + 1 < n &&
@@ -493,7 +635,6 @@ static char *html_to_text_basic(const char *html, size_t n, size_t *out_n) {
           tolower((unsigned char)html[j + 1]) == 'r') {
         sb_append(&out, &len, &cap, "\n", 1);
       }
-      /* skip tag */
       while (i < n && html[i] != '>') i++;
       if (i < n) i++;
       continue;
@@ -505,7 +646,6 @@ static char *html_to_text_basic(const char *html, size_t n, size_t *out_n) {
       if (i + 5 <= n && !strncmp(p, "&amp;", 5))  { sb_append(&out, &len, &cap, "&", 1); i += 5; continue; }
       if (i + 4 <= n && !strncmp(p, "&lt;", 4))   { sb_append(&out, &len, &cap, "<", 1); i += 4; continue; }
       if (i + 4 <= n && !strncmp(p, "&gt;", 4))   { sb_append(&out, &len, &cap, ">", 1); i += 4; continue; }
-      /* otherwise fall through */
     }
 
     sb_append(&out, &len, &cap, &html[i], 1);
@@ -517,7 +657,7 @@ static char *html_to_text_basic(const char *html, size_t n, size_t *out_n) {
   return out;
 }
 
-/* ----------------------- Subtitle downloader (unchanged) ---------------------- */
+/* ----------------------- Subtitle downloader ---------------------- */
 
 static void parse_movie_title_slug(const char *movie_title, char *out, size_t outsz) {
   size_t j = 0;
@@ -674,8 +814,13 @@ static bool download_subtitle_srt(const char *movie_title, const char *dest_srt_
   char *esczip = sh_escape(tmpzip);
   char *escout = sh_escape(dest_srt_path);
 
+#ifdef _WIN32
+  int rc = run_cmd("unzip -p %s \"*.srt\" > %s 2>NUL || unzip -p %s \"*.SRT\" > %s",
+                   esczip, escout, esczip, escout);
+#else
   int rc = run_cmd("unzip -p %s \"*.srt\" > %s 2>/dev/null || unzip -p %s \"*.SRT\" > %s",
                    esczip, escout, esczip, escout);
+#endif
 
   free(esczip);
   free(escout);
@@ -709,7 +854,7 @@ static void imsdb_format_title_loose(const char *movie_title, char *out, size_t 
   out[j] = 0;
 }
 
-/* NEW: Extract script from either <pre>...</pre> OR class="scrtext" region */
+/* Extract script from either <pre>...</pre> OR class="scrtext" region */
 static bool imsdb_fetch_script_to_file(const char *url, const char *dest_txt_path,
                                        char *why, size_t whysz) {
   if (why && whysz) { why[0] = 0; }
@@ -765,7 +910,6 @@ static bool imsdb_fetch_script_to_file(const char *url, const char *dest_txt_pat
   size_t txt_n = 0;
   char *txt = html_to_text_basic(start, raw_n, &txt_n);
 
-  /* sanity check */
   if (txt_n < 1000) {
     if (why && whysz) snprintf(why, whysz, "extracted text too small (%zu)", txt_n);
     free(txt);
@@ -785,16 +929,15 @@ static bool imsdb_fetch_script_to_file(const char *url, const char *dest_txt_pat
   return true;
 }
 
-/* UPDATED: Try multiple URL families, including Movie%20Scripts/<Title>%20Script.html */
+/* Try multiple URL families, including Movie%20Scripts/<Title>%20Script.html */
 static bool download_imsdb_script_ex(const char *movie_title,
-                                    const char *dest_txt_path,
-                                    char *used_url, size_t used_url_sz) {
+                                     const char *dest_txt_path,
+                                     char *used_url, size_t used_url_sz) {
   ensure_dir("scripts");
   ensure_dir("scripts/srt_files");
 
   if (used_url && used_url_sz) used_url[0] = 0;
 
-  /* Existing variants (hyphens, strip parens, loose format) */
   char a[512] = {0};
   char b[512] = {0};
   char c[512] = {0};
@@ -816,11 +959,9 @@ static bool download_imsdb_script_ex(const char *movie_title,
   char b_lo[512]; to_lower_copy(b, b_lo, sizeof(b_lo));
   char c_lo[512]; to_lower_copy(c, c_lo, sizeof(c_lo));
 
-  /* Movie Scripts URL uses %20 spaces and ends with " Script.html" */
   char enc_title[1024];
   url_encode_component(movie_title, enc_title, sizeof(enc_title));
 
-  /* Build attempt URLs */
   char url0[1024], url1[1024], url2[1024], url3[1024], url4[1024], url5[1024], url6[1024];
 
   snprintf(url0, sizeof(url0), "https://imsdb.com/scripts/%s.html", a);
@@ -852,7 +993,7 @@ static bool download_imsdb_script_ex(const char *movie_title,
   return false;
 }
 
-/* ----------------------- OpenAI response parsing (unchanged) ----------------------- */
+/* ----------------------- OpenAI response parsing ----------------------- */
 
 static char *openai_extract_output_text(const char *resp_json) {
   cJSON *root = cJSON_Parse(resp_json);
@@ -1198,7 +1339,8 @@ static ClipPlanList openai_make_plan(const Config *cfg,
   bool has_script = (optional_script_text && optional_script_text[0] != 0);
   long timeout_s = has_script ? 14400L : 3600L;
 
-  MemBuf resp = http_post_json_to_mem("https://api.openai.com/v1/responses", cfg->openai_key, body, &http_code, timeout_s);
+  MemBuf resp = http_post_json_to_mem("https://api.openai.com/v1/responses",
+                                      cfg->openai_key, body, &http_code, timeout_s);
   free(body);
 
   if (http_code < 200 || http_code >= 300) {
@@ -1336,7 +1478,7 @@ static bool ffmpeg_make_adjusted_clip(const char *input_mp4, int start_s, int en
   if (speed < 0.05) speed = 0.05;
   if (speed > 20.0) speed = 20.0;
 
-  char *in_esc = sh_escape(input_mp4);
+  char *in_esc  = sh_escape(input_mp4);
   char *nar_esc = sh_escape(narration_mp3);
   char *out_esc = sh_escape(out_mp4);
 
@@ -1361,7 +1503,7 @@ static bool ffmpeg_make_adjusted_clip(const char *input_mp4, int start_s, int en
 
 static bool ffmpeg_concat_videos(const char *list_txt, const char *out_mp4) {
   char *list_esc = sh_escape(list_txt);
-  char *out_esc = sh_escape(out_mp4);
+  char *out_esc  = sh_escape(out_mp4);
 
   int rc = run_cmd(
     "ffmpeg -y -hide_banner -loglevel error "
@@ -1378,7 +1520,7 @@ static bool ffmpeg_concat_videos(const char *list_txt, const char *out_mp4) {
 }
 
 static bool ffmpeg_trim_audio(const char *in_audio, double start_s, double dur_s, const char *out_m4a) {
-  char *in_esc = sh_escape(in_audio);
+  char *in_esc  = sh_escape(in_audio);
   char *out_esc = sh_escape(out_m4a);
   int rc = run_cmd(
     "ffmpeg -y -hide_banner -loglevel error "
@@ -1393,7 +1535,7 @@ static bool ffmpeg_trim_audio(const char *in_audio, double start_s, double dur_s
 
 static bool ffmpeg_concat_audio(const char *list_txt, const char *out_m4a) {
   char *list_esc = sh_escape(list_txt);
-  char *out_esc = sh_escape(out_m4a);
+  char *out_esc  = sh_escape(out_m4a);
   int rc = run_cmd(
     "ffmpeg -y -hide_banner -loglevel error "
     "-f concat -safe 0 -i %s -c copy %s",
@@ -1438,7 +1580,7 @@ static bool ffmpeg_make_vertical(const char *in_mp4, const char *out_mp4) {
   out_w &= ~1;
   out_h &= ~1;
 
-  char *in_esc = sh_escape(in_mp4);
+  char *in_esc  = sh_escape(in_mp4);
   char *out_esc = sh_escape(out_mp4);
 
   int rc = run_cmd(
@@ -1498,7 +1640,11 @@ static char **list_files_with_ext(const char *dir, const char *ext1, const char 
       if (!arr) die("OOM");
     }
     char path[PATH_MAX];
+#ifdef _WIN32
+    snprintf(path, sizeof(path), "%s\\%s", dir, name);
+#else
     snprintf(path, sizeof(path), "%s/%s", dir, name);
+#endif
     arr[*out_n] = strdup(path);
     (*out_n)++;
   }
@@ -1516,14 +1662,15 @@ static bool rm_rf_path(const char *path) {
   struct stat st;
   if (lstat(path, &st) != 0) return false;
 
+#ifdef _WIN32
+  if (!S_ISDIR(st.st_mode)) return unlink(path) == 0;
+#else
   if (S_ISLNK(st.st_mode) || S_ISREG(st.st_mode) || S_ISFIFO(st.st_mode) ||
       S_ISSOCK(st.st_mode) || S_ISCHR(st.st_mode) || S_ISBLK(st.st_mode)) {
     return unlink(path) == 0;
   }
-
-  if (!S_ISDIR(st.st_mode)) {
-    return unlink(path) == 0;
-  }
+  if (!S_ISDIR(st.st_mode)) return unlink(path) == 0;
+#endif
 
   DIR *d = opendir(path);
   if (!d) return false;
@@ -1534,13 +1681,21 @@ static bool rm_rf_path(const char *path) {
     if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
 
     char child[PATH_MAX];
+#ifdef _WIN32
+    snprintf(child, sizeof(child), "%s\\%s", path, ent->d_name);
+#else
     snprintf(child, sizeof(child), "%s/%s", path, ent->d_name);
+#endif
 
     if (!rm_rf_path(child)) ok = false;
   }
   closedir(d);
 
+#ifdef _WIN32
+  if (_rmdir(path) != 0) ok = false;
+#else
   if (rmdir(path) != 0) ok = false;
+#endif
   return ok;
 }
 
@@ -1556,13 +1711,19 @@ static bool clear_directory_contents(const char *dir_path) {
     if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
 
     char child[PATH_MAX];
+#ifdef _WIN32
+    snprintf(child, sizeof(child), "%s\\%s", dir_path, ent->d_name);
+#else
     snprintf(child, sizeof(child), "%s/%s", dir_path, ent->d_name);
+#endif
 
     if (!rm_rf_path(child)) ok = false;
   }
   closedir(d);
   return ok;
 }
+
+/* ----------------------- Movie pipeline ----------------------- */
 
 static bool process_movie(const Config *cfg, const char *movie_path, const char *movie_title,
                           int num_clips) {
@@ -1641,7 +1802,9 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
 
   logi("Requesting OpenAI clip plan (%d clips target)...", num_clips);
   bool retry_no_script = false;
-  ClipPlanList plan = openai_make_plan(cfg, movie_title, subs_seconds, imsdb_script ? imsdb_script : "", num_clips, &retry_no_script);
+  ClipPlanList plan = openai_make_plan(cfg, movie_title, subs_seconds,
+                                       imsdb_script ? imsdb_script : "",
+                                       num_clips, &retry_no_script);
 
   if (plan.count == 0 && retry_no_script && imsdb_script && imsdb_script[0]) {
     logw("OpenAI request failed with IMSDb context; retrying without IMSDb script for %s", movie_title);
@@ -1671,7 +1834,7 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
   size_t made = 0;
   for (size_t i = 0; i < plan.count; i++) {
     int start_s = plan.items[i].start;
-    int end_s = plan.items[i].end;
+    int end_s   = plan.items[i].end;
     if (start_s <= 0) { logw("Skipping clip %zu (start<=0)", i + 1); continue; }
     if (end_s <= start_s) { logw("Skipping clip %zu (end<=start)", i + 1); continue; }
 
@@ -1813,7 +1976,7 @@ static bool process_movie(const Config *cfg, const char *movie_path, const char 
 
   char out_final[PATH_MAX], out_vert[PATH_MAX];
   snprintf(out_final, sizeof(out_final), "output/%s.mp4", movie_title);
-  snprintf(out_vert, sizeof(out_vert), "tiktok_output/%s_vertical.mp4", movie_title);
+  snprintf(out_vert,  sizeof(out_vert),  "tiktok_output/%s_vertical.mp4", movie_title);
 
   logi("Rendering vertical -> %s", out_vert);
   if (!ffmpeg_make_vertical(out_final, out_vert)) {
@@ -1843,7 +2006,8 @@ static void strip_ext(const char *filename, char *out, size_t outsz) {
   if (dot) *dot = 0;
 }
 
-int main(void) {
+/* -------------------------- PUBLIC ENTRYPOINT -------------------------- */
+int run_generation(void) {
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
   Config cfg = load_config_json("config.json");
@@ -1905,5 +2069,5 @@ int main(void) {
   fprintf(stderr, "\nAll done. Processed: %d\n", processed);
 
   curl_global_cleanup();
-  return 0;
+  return processed; /* 0 is also a valid “nothing to do” result */
 }

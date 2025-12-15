@@ -4,6 +4,8 @@ Turn full-length `.mp4` movies into **AI-narrated movie recap videos** (horizont
 
 Example Video: [Citizen Kane (1941)](https://www.youtube.com/watch?v=ej8c0NwKW00&t=5s)
 
+![UI Screenshot](resources/ui.png)
+
 ---
 
 ## What it does
@@ -27,15 +29,41 @@ It also **clears generated files in `clips/` each run** (while preserving the `c
 
 ---
 
+## UI (raylib)
+
+The app includes a simple **desktop UI window** (raylib) that lets you:
+
+- Open key folders with one click:
+  - `movies/`
+  - `movies_retired/` (optional)
+  - `output/`
+  - `scripts/srt_files/` (subtitles/scripts cache)
+- Start generation with a **START GENERATION** button
+- View generation output in an in-app **log panel** (in addition to terminal output)
+- The window is **resizable**
+
+### UI font
+The UI uses **Inter Regular** from:
+
+- `resources/Inter-Regular.ttf`
+
+Make sure that file exists, and that you run the program with the working directory set so `resources/` is resolvable (running from the project root is the easiest).
+
+---
+
 ## Folder structure
 
 - `movies/` — input `.mp4` files (filename should be the movie title)
+- `movies_retired/` — optional storage for movies you don’t want in the active input folder
 - `output/` — final horizontal recap videos
 - `tiktok_output/` — final vertical recap videos
 - `backgroundmusic/` — optional `.mp3` / `.m4a` music used as BGM
 - `clips/` — temporary working files (auto-cleared each run)
   - `clips/audio/` — generated narration MP3s (files cleared each run; folder preserved)
 - `scripts/srt_files/` — downloaded/cached subtitles and optional scripts
+- `resources/`
+  - `Inter-Regular.ttf` — UI font
+  - `ui.png` — UI screenshot (for README)
 
 ---
 
@@ -51,6 +79,7 @@ You need:
 - Libraries:
   - `libcurl`
   - `cJSON`
+  - **raylib** (for the UI)
 
 ### macOS (Homebrew) quick install
 ```bash
@@ -64,6 +93,9 @@ Install equivalents via your package manager (names vary by distro):
 - `cmake`, `pkg-config`, build essentials
 - `cjson` dev package
 - `unzip`
+- `raylib` (dev package) if your build expects a system install
+
+> Note: How raylib is provided depends on your CMake setup (system package vs FetchContent/submodule). If your build already works, you’re good.
 
 ---
 
@@ -102,10 +134,16 @@ This produces the executable (name depends on your CMake target, e.g. `movie_sum
 
 1. Put movie files in `movies/`:
    - Example: `movies/Sinners.mp4`
+
 2. Run the program (example binary name):
    ```bash
    ./build/movie_summary_bot
    ```
+
+3. In the UI:
+   - Use the folder buttons to open `movies/`, `output/`, `scripts/srt_files/`, etc.
+   - Click **START GENERATION** to run.
+   - Watch progress in the in-app **Log** panel (and/or terminal).
 
 Outputs:
 - `output/Sinners.mp4`
@@ -155,6 +193,9 @@ Saved to `tiktok_output/`.
   - your OpenAI key
   - network connectivity
   - that the SRT conversion output is not empty
+- If the UI font looks wrong or you see missing-text issues:
+  - confirm `resources/Inter-Regular.ttf` exists
+  - run the binary from the project root so `resources/` resolves
 - If vertical render fails, confirm:
   - FFmpeg is installed and in PATH
   - the input `output/<MovieTitle>.mp4` exists and is valid
